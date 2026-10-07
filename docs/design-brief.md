@@ -1,4 +1,4 @@
-# Design Brief: LimitKiller landing page
+# Design Brief: UsageForge landing page
 
 Sources, both fetched on 2026-10-07 with curl, including their CSS:
 - **auroraforgelab.com**: static HTML plus `styles.css` and `script.js`. The values below are copied from the stylesheet.
@@ -81,8 +81,8 @@ Hermes palette, for reference only, not to copy: page `#0000f2` (electric blue) 
 6. **Pricing:** tiers (Free / Plus / Super / Ultra) with one tag marked "// most popular".
 7. **Footer:** product footer (tagline, ©, Terms, Privacy, "MIT License"), then the larger org footer with link columns: Research, Products, Resources, Platform.
 
-## 8. How to blend for LimitKiller
+## 8. How to blend for UsageForge
 - **Take from Aurora:** every token above, both fonts, the lamp-board hero sky, chamfers, mono kickers, amber status dots, the gradient card edge, the sticky reveal footer with the dot-matrix wordmark, and the calm copy voice.
-- **Take from Hermes:** the section order in §7, an install command block in the hero (`--night-2` bg, mono 14px, `$ ` prompt in `--faint`, chamfered copy button with "Copied" feedback in amber), a 3-column numbered feature grid, and the FAQ accordion. Skip pricing unless LimitKiller has paid tiers. Add an "Install" CTA to the nav.
+- **Take from Hermes:** the section order in §7, an install command block in the hero (`--night-2` bg, mono 14px, `$ ` prompt in `--faint`, chamfered copy button with "Copied" feedback in amber), a 3-column numbered feature grid, and the FAQ accordion. Skip pricing unless UsageForge has paid tiers. Add an "Install" CTA to the nav.
 - **Suggested page:** Nav → Hero (h1 + lede + CTAs, install snippet with OS tabs, and a "Lab index"-style glass panel on the right repurposed as a live stats/terminal readout) → optional pinned statement paragraph → 6 features → "How it works", a numbered 01–03 sequence (GUESSED: neither site has one, but it fits the pattern) → FAQ → final CTA reusing the contact block style → footer.
 - **Do not copy:** Hermes's blue background, its commercial fonts, or its rounded-xs chips. Keep everything dark, teal, and amber.

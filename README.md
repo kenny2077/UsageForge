@@ -1,44 +1,44 @@
-# LimitKiller
+# UsageForge
 
 On the $20 Claude Pro / ChatGPT Plus plans, the 5-hour usage window starts with your first message.
-LimitKiller sends that first message for you, so a fresh window is already running when you sit down to work.
+UsageForge sends that first message for you, so a fresh window is already running when you sit down to work.
 
 One bash script. No daemon, no stored credentials. It needs `bash` and `jq`; macOS 15+ ships `jq`, otherwise run `brew install jq` or `apt install jq`.
 It uses `launchd` on macOS and `cron` on Linux. Windows isn't supported. WSL may work through cron, but it hasn't been tested.
 
-**Product page:** https://kenny2077.github.io/LimitKiller/
+**Product page:** https://kenny2077.github.io/UsageForge/
 
 ## Install
 
 ```bash
-git clone https://github.com/kenny2077/LimitKiller && cd LimitKiller
-ln -s "$PWD/limitkiller" ~/.local/bin/limitkiller   # any directory on your PATH
+git clone https://github.com/kenny2077/UsageForge && cd UsageForge
+ln -s "$PWD/usageforge" ~/.local/bin/usageforge   # any directory on your PATH
 ```
 
 You need `claude` (Claude Code) and/or `codex` (Codex CLI: `npm i -g @openai/codex`) installed and logged in.
-LimitKiller pings whichever of the two it finds.
+UsageForge pings whichever of the two it finds.
 
 ## Two modes (pick one; installing a mode replaces the other)
 
 **1. Schedule: ping at fixed times you choose.**
 ```bash
-limitkiller schedule 06:00            # window runs 6–11, so your 9am session gets a reset at 11
-limitkiller schedule 06:00 11:00 16:00
+usageforge schedule 06:00            # window runs 6–11, so your 9am session gets a reset at 11
+usageforge schedule 06:00 11:00 16:00
 ```
 
 **2. Watch: start the next window as soon as the last one resets.**
 ```bash
-limitkiller watch     # checks every 5 min; it only sends a message after a window ends
+usageforge watch     # checks every 5 min; it only sends a message after a window ends
 ```
 
 ```bash
-limitkiller ping            # ping now (or: limitkiller ping codex)
-limitkiller status          # when each window resets, which mode is installed, and the recent log
-limitkiller stop            # remove the job (state stays in ~/.local/state/limitkiller)
+usageforge ping            # ping now (or: usageforge ping codex)
+usageforge status          # when each window resets, which mode is installed, and the recent log
+usageforge stop            # remove the job (state stays in ~/.local/state/usageforge)
 ```
 
 Settings come from environment variables, which are captured when you install a mode:
-`LK_TOOLS="claude"` (only ping Claude), `LK_CLAUDE_MODEL=haiku`, `LK_STATE=~/.local/state/limitkiller`.
+`UF_TOOLS="claude"` (only ping Claude), `UF_CLAUDE_MODEL=haiku`, `UF_STATE=~/.local/state/usageforge`.
 Installing copies the script into the state directory and runs it from there. macOS doesn't let launchd jobs read `~/Desktop` or `~/Documents`, and the copy also keeps working if you move or delete the repo.
 
 ## How it works
@@ -49,14 +49,14 @@ Installing copies the script into the state directory and runs it from there. ma
   It still loads your `~/.codex/config.toml`, including any MCP servers listed there.
 - **Reset detection (watch mode). It spends no quota and reads no tokens.**
   - Codex writes its own limits to `~/.codex/sessions/**/rollout-*.jsonl` (`payload.rate_limits.primary.resets_at`).
-    LimitKiller reads them there, so it also sees windows that you started yourself.
+    UsageForge reads them there, so it also sees windows that you started yourself.
   - Claude: the ping's `stream-json` output includes a `rate_limit_event` with `resetsAt`.
-    LimitKiller saves that value. If the event is missing, it assumes the reset is 5 hours after the ping.
+    UsageForge saves that value. If the event is missing, it assumes the reset is 5 hours after the ping.
 - **When a ping fails:**
-  - **Rate-limited** (5-hour or weekly cap): LimitKiller waits until the reset time the server reports. For Codex it reads the weekly figure from the logs, so it doesn't send pings that can't succeed.
+  - **Rate-limited** (5-hour or weekly cap): UsageForge waits until the reset time the server reports. For Codex it reads the weekly figure from the logs, so it doesn't send pings that can't succeed.
   - **Anything else** (still offline after a wake-up, logged out): it retries 3 times, one minute apart, then backs off for 15 minutes.
   - **Hung ping:** each one is killed after 2 minutes.
-- Logs go to `~/.local/state/limitkiller/log`.
+- Logs go to `~/.local/state/usageforge/log`.
 
 ## Caveats
 
@@ -70,7 +70,7 @@ Installing copies the script into the state directory and runs it from there. ma
 ## Uninstall
 
 ```bash
-limitkiller stop && rm -rf ~/.local/state/limitkiller
+usageforge stop && rm -rf ~/.local/state/usageforge
 ```
 
 ## Test

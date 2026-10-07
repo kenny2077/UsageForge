@@ -27,7 +27,7 @@ echo '{"payload":{"rate_limits":{"primary":{"resets_at":$FUTURE},"secondary":{"u
 EOF
 chmod +x "$T/bin/"*
 
-lk() { HOME="$T/home" PATH="$T/bin:$PATH" LK_STATE="$T/state" LK_TOOLS="claude codex" LK_RETRY_DELAY=0 ./limitkiller "$@" >/dev/null; }
+lk() { HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" UF_TOOLS="claude codex" UF_RETRY_DELAY=0 UF_JITTER=0 ./usageforge "$@" >/dev/null; }
 calls() { cat "$T/$1.calls" 2>/dev/null | wc -l | tr -d ' '; }
 check() { [ "$(calls claude) $(calls codex)" = "$1" ] || { echo "FAIL: $2 (calls: $(calls claude) $(calls codex), want $1)"; exit 1; }; }
 
@@ -54,8 +54,8 @@ lk tick;  check "3 4" "codex weekly cap hit should not ping"
 ! lk schedule 25:00 || { echo "FAIL: bad time accepted"; exit 1; }
 if [ "$(uname)" = Darwin ]; then   # plist must stay valid even with XML-special chars in paths
   printf '#!/bin/sh\nexit 0\n' >"$T/bin/launchctl"; chmod +x "$T/bin/launchctl"
-  HOME="$T/home" PATH="$T/bin:$PATH" LK_STATE="$T/a&b<c" ./limitkiller schedule 06:00 7:30 >/dev/null
-  plutil -lint -s "$T/home/Library/LaunchAgents/dev.limitkiller.plist" || { echo "FAIL: bad plist"; exit 1; }
-  [ -x "$T/a&b<c/limitkiller" ] || { echo "FAIL: script not copied"; exit 1; }
+  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/a&b<c" ./usageforge schedule 06:00 7:30 >/dev/null
+  plutil -lint -s "$T/home/Library/LaunchAgents/dev.usageforge.plist" || { echo "FAIL: bad plist"; exit 1; }
+  [ -x "$T/a&b<c/usageforge" ] || { echo "FAIL: script not copied"; exit 1; }
 fi
 echo PASS

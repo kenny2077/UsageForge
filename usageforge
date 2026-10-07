@@ -1,28 +1,28 @@
 #!/usr/bin/env bash
-# LimitKiller — start your Claude Code / Codex 5-hour usage window when YOU want.
+# UsageForge — your AI usage window, on your schedule. (Claude Code + Codex, 5-hour window)
 #
-#   limitkiller ping [claude|codex]     send one tiny message now
-#   limitkiller schedule 06:00 11:00    ping at these times every day   (mode 1)
-#   limitkiller watch                   ping as soon as each window resets (mode 2)
-#   limitkiller status                  show reset times, the installed job, recent log
-#   limitkiller stop                    remove the schedule/watch job
+#   usageforge ping [claude|codex]     send one tiny message now
+#   usageforge schedule 06:00 11:00    ping at these times every day   (mode 1)
+#   usageforge watch                   ping as soon as each window resets (mode 2)
+#   usageforge status                  show reset times, the installed job, recent log
+#   usageforge stop                    remove the schedule/watch job
 #
-# Env (captured at install): LK_TOOLS="claude codex" (default: whichever is installed),
-#                            LK_CLAUDE_MODEL=haiku, LK_STATE=~/.local/state/limitkiller
+# Env (captured at install): UF_TOOLS="claude codex" (default: whichever is installed),
+#                            UF_CLAUDE_MODEL=haiku, UF_STATE=~/.local/state/usageforge
 set -uo pipefail
 VERSION=1.0.0
 
-STATE="${LK_STATE:-$HOME/.local/state/limitkiller}"
-MODEL="${LK_CLAUDE_MODEL:-haiku}"
-TOOLS="${LK_TOOLS:-$(command -v claude >/dev/null && echo claude) $(command -v codex >/dev/null && echo codex)}"
+STATE="${UF_STATE:-$HOME/.local/state/usageforge}"
+MODEL="${UF_CLAUDE_MODEL:-haiku}"
+TOOLS="${UF_TOOLS:-$(command -v claude >/dev/null && echo claude) $(command -v codex >/dev/null && echo codex)}"
 SESSIONS="${CODEX_HOME:-$HOME/.codex}/sessions"
-LABEL=dev.limitkiller
+LABEL=dev.usageforge
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 MSG=hi
 
-command -v jq >/dev/null || { echo "limitkiller needs jq (brew install jq / apt install jq)" >&2; exit 1; }
-[[ $MODEL =~ ^[A-Za-z0-9._-]+$ ]] || { echo "bad LK_CLAUDE_MODEL: $MODEL" >&2; exit 1; }
+command -v jq >/dev/null || { echo "usageforge needs jq (brew install jq / apt install jq)" >&2; exit 1; }
+[[ $MODEL =~ ^[A-Za-z0-9._-]+$ ]] || { echo "bad UF_CLAUDE_MODEL: $MODEL" >&2; exit 1; }
 mkdir -p "$STATE"
 
 log() { echo "$(date '+%F %T') $*" >>"$STATE/log"; echo "$*"; }
@@ -30,6 +30,8 @@ now() { date +%s; }
 int() { [[ ${1:-} =~ ^[0-9]+$ ]] && echo "$1" || echo 0; }
 fmt() { date -r "$1" '+%a %H:%M' 2>/dev/null || date -d "@$1" '+%a %H:%M'; }
 xml() { sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' <<<"$1"; }
+# Jobs wait a random 0-2 min so pings don't land on the same second every day.
+jitter() { local j=${UF_JITTER:-120}; [ "$j" -gt 0 ] && sleep $(( RANDOM % j )); return 0; }
 # macOS has no `timeout`; a hung ping would block every later launchd run.
 limit() { perl -e 'alarm shift; exec @ARGV' 120 "$@"; }
 
@@ -77,7 +79,7 @@ ping() {
     # Retry: right after wake-up the network is often not back yet.
     for try in 1 2 3; do
       "ping_$t"; rc=$?
-      [ $rc = 1 ] && [ $try -lt 3 ] && { sleep "${LK_RETRY_DELAY:-60}"; continue; }
+      [ $rc = 1 ] && [ $try -lt 3 ] && { sleep "${UF_RETRY_DELAY:-60}"; continue; }
       break
     done
     case $rc in
@@ -93,13 +95,13 @@ tick() {
   local t
   for t in $TOOLS; do
     [ "$(now)" -lt "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" ] && continue
-    if [ "$(now)" -ge "$(reset_at "$t")" ]; then ping "$t"; fi
+    if [ "$(now)" -ge "$(reset_at "$t")" ]; then jitter; ping "$t"; fi
   done
 }
 
 # install <cmd> <launchd schedule xml> <cron schedule lines...>
 install() {
-  local cmd=$1 sched=$2 bin="$STATE/limitkiller" env line; shift 2
+  local cmd=$1 sched=$2 bin="$STATE/usageforge" env line; shift 2
   stop >/dev/null
   # Run a copy: launchd can't read ~/Desktop or ~/Documents (macOS privacy), and the repo may move.
   cp "$SELF" "$bin" && chmod +x "$bin" || { echo "install failed: copy to $bin" >&2; exit 1; }
@@ -115,9 +117,9 @@ install() {
   <key>ProgramArguments</key><array><string>$(xml "$bin")</string><string>$cmd</string></array>
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>$(xml "$PATH")</string>
-    <key>LK_TOOLS</key><string>$(xml "$TOOLS")</string>
-    <key>LK_CLAUDE_MODEL</key><string>$MODEL</string>
-    <key>LK_STATE</key><string>$(xml "$STATE")</string>
+    <key>UF_TOOLS</key><string>$(xml "$TOOLS")</string>
+    <key>UF_CLAUDE_MODEL</key><string>$MODEL</string>
+    <key>UF_STATE</key><string>$(xml "$STATE")</string>
   </dict>
   $sched
   <key>StandardOutPath</key><string>/dev/null</string>
@@ -129,7 +131,7 @@ EOF
     launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || { sleep 2; launchctl bootstrap "gui/$(id -u)" "$PLIST"; } ||
       { echo "install failed: launchctl bootstrap" >&2; exit 1; }
   else
-    env="PATH=$(printf %q "$PATH") LK_TOOLS=$(printf %q "$TOOLS") LK_CLAUDE_MODEL=$MODEL LK_STATE=$(printf %q "$STATE")"
+    env="PATH=$(printf %q "$PATH") UF_TOOLS=$(printf %q "$TOOLS") UF_CLAUDE_MODEL=$MODEL UF_STATE=$(printf %q "$STATE")"
     { crontab -l 2>/dev/null; for line in "$@"; do echo "$line ${env//%/\\%} $(printf %q "$bin") $cmd # $LABEL"; done; } | crontab - ||
       { echo "install failed: crontab" >&2; exit 1; }
   fi
@@ -146,7 +148,7 @@ stop() {
 }
 
 schedule() {
-  [ $# -gt 0 ] || { echo "usage: limitkiller schedule HH:MM [HH:MM...]"; exit 1; }
+  [ $# -gt 0 ] || { echo "usage: usageforge schedule HH:MM [HH:MM...]"; exit 1; }
   local sched="<key>StartCalendarInterval</key><array>" cron=() t h m
   for t in "$@"; do
     [[ $t =~ ^([01]?[0-9]|2[0-3]):([0-5][0-9])$ ]] || { echo "bad time: $t (want HH:MM)"; exit 1; }
@@ -154,7 +156,7 @@ schedule() {
     sched+="<dict><key>Hour</key><integer>$h</integer><key>Minute</key><integer>$m</integer></dict>"
     cron+=("$m $h * * *")
   done
-  install ping "$sched</array>" "${cron[@]}"
+  install scheduled "$sched</array>" "${cron[@]}"
 }
 
 status() {
@@ -163,22 +165,23 @@ status() {
     r=$(reset_at "$t"); [ "$r" -gt "$(now)" ] && echo "$t: window resets $(fmt "$r")" || echo "$t: no window running"
   done
   if [ "$(uname)" = Darwin ]; then
-    launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 && job=$(grep -oE '<string>(ping|tick)</string>' "$PLIST" | sed 's/<[^>]*>//g')
+    launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 && job=$(grep -oE '<string>(scheduled|tick)</string>' "$PLIST" | sed 's/<[^>]*>//g')
   else
-    job=$(crontab -l 2>/dev/null | grep "# $LABEL\$" | grep -oE '(ping|tick) #' | head -1 | cut -d' ' -f1)
+    job=$(crontab -l 2>/dev/null | grep "# $LABEL\$" | grep -oE '(scheduled|tick) #' | head -1 | cut -d' ' -f1)
   fi
-  case ${job:-} in ping) echo "job: schedule" ;; tick) echo "job: watch" ;; *) echo "job: none" ;; esac
+  case ${job:-} in scheduled) echo "job: schedule" ;; tick) echo "job: watch" ;; *) echo "job: none" ;; esac
   [ -f "$STATE/log" ] && { echo "recent log:"; tail -n 5 "$STATE/log" | sed 's/^/  /'; }
   return 0
 }
 
 case "${1:-}" in
   ping) shift; ping "$@" ;;
+  scheduled) jitter; ping ;;
   tick) tick ;;
   schedule) shift; schedule "$@" ;;
   watch) install tick "<key>StartInterval</key><integer>300</integer><key>RunAtLoad</key><true/>" "*/5 * * * *" ;;
   status) status ;;
   stop) stop ;;
-  -v|--version|version) echo "limitkiller $VERSION" ;;
+  -v|--version|version) echo "usageforge $VERSION" ;;
   *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
