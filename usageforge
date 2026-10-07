@@ -8,7 +8,8 @@
 #   usageforge stop                    remove the schedule/watch job
 #
 # Env (captured at install): UF_TOOLS="claude codex" (default: whichever is installed),
-#                            UF_CLAUDE_MODEL=haiku, UF_STATE=~/.local/state/usageforge
+#                            UF_CLAUDE_MODEL=haiku, UF_CODEX_MODEL=(your default),
+#                            UF_STATE=~/.local/state/usageforge
 set -uo pipefail
 umask 077
 VERSION=2.1.0
@@ -28,6 +29,7 @@ SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
 command -v jq >/dev/null || { echo "usageforge needs jq (brew install jq / apt install jq)" >&2; exit 1; }
 [[ $MODEL =~ ^[A-Za-z0-9._-]+$ ]] || { echo "bad UF_CLAUDE_MODEL: $MODEL" >&2; exit 1; }
+[[ ${UF_CODEX_MODEL:-x} =~ ^[A-Za-z0-9._-]+$ ]] || { echo "bad UF_CODEX_MODEL: $UF_CODEX_MODEL" >&2; exit 1; }
 mkdir -p "$STATE"
 
 log() { echo "$(date '+%F %T') $*" >>"$STATE/log"; echo "$*"; }
@@ -82,8 +84,11 @@ ping_claude() {
 ping_codex() {
   # --ignore-user-config skips ~/.codex/config.toml (MCP servers etc.) on CLIs that support it.
   local lean=(); codex exec --help 2>/dev/null | grep -q -- --ignore-user-config && lean=(--ignore-user-config)
+  [ -n "${UF_CODEX_MODEL:-}" ] && lean+=(-m "$UF_CODEX_MODEL")
+  # Codex echoes the whole prompt (incl. your AGENTS.md) on stderr: keep it out of the log unless it failed.
   (cd "$STATE" && limit codex exec --skip-git-repo-check --sandbox read-only ${lean[@]+"${lean[@]}"} \
-     -c model_reasoning_effort=low "$(greet)" </dev/null >/dev/null 2>>"$STATE/log") || return 1
+     -c model_reasoning_effort=low "$(greet)" </dev/null >/dev/null 2>"$STATE/codex.err") ||
+    { tail -n 5 "$STATE/codex.err" >>"$STATE/log"; return 1; }
   # ponytail: assume this ping opened a 5h window; the Codex logs override it when readable.
   echo $(( $(now) + 18000 )) >"$STATE/codex.reset"
 }
@@ -142,6 +147,7 @@ install() {
     <key>UF_TOOLS</key><string>$(xml "$TOOLS")</string>
     <key>UF_CLAUDE_MODEL</key><string>$MODEL</string>
     <key>UF_STATE</key><string>$(xml "$STATE")</string>
+    <key>UF_CODEX_MODEL</key><string>${UF_CODEX_MODEL:-}</string>
     $extra
   </dict>
   $sched
@@ -156,7 +162,7 @@ EOF
       { echo "install failed: launchctl bootstrap" >&2; exit 1; }
   else
     stop >/dev/null
-    env="PATH=$(printf %q "$PATH") UF_TOOLS=$(printf %q "$TOOLS") UF_CLAUDE_MODEL=$MODEL UF_STATE=$(printf %q "$STATE")"
+    env="PATH=$(printf %q "$PATH") UF_TOOLS=$(printf %q "$TOOLS") UF_CLAUDE_MODEL=$MODEL UF_STATE=$(printf %q "$STATE") UF_CODEX_MODEL=${UF_CODEX_MODEL:-}"
     [ -n "${CODEX_HOME:-}" ] && env+=" CODEX_HOME=$(printf %q "$CODEX_HOME")"
     # cron treats % as a newline, so escape it everywhere on the line.
     { crontab -l 2>/dev/null; for line in "$@"; do line="$line $env $(printf %q "$bin") $cmd"; echo "${line//%/\\%} # $LABEL"; done; } | crontab - ||
@@ -217,5 +223,5 @@ case "${1:-}" in
   status) status ;;
   stop) stop ;;
   -v|--version|version) echo "usageforge $VERSION" ;;
-  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
