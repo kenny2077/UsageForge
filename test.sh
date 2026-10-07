@@ -43,6 +43,7 @@ cfg() { echo "$1" >"$T/state/config.json"; }
 cfg '{"claude":{"mode":"watch"},"codex":{"mode":"watch"}}'
 lk tick;  check "1 1" "first tick should ping both"
 [ "$(cat "$T/state/claude.reset")" = "$FUTURE" ] || { echo "FAIL: claude reset not parsed"; exit 1; }
+[ "$(cat "$T/state/codex.reset")" = "$FUTURE" ] || { echo "FAIL: codex reset should come from its log, not now+5h"; exit 1; }
 lk tick;  check "1 1" "second tick should be a no-op"
 echo 1 >"$T/state/claude.reset"
 lk tick;  check "2 1" "should re-ping claude only"
@@ -73,6 +74,7 @@ rmdir "$T/state/lock"
 
 # Schedule mode: fire once per slot, only on the chosen days, with the saved prompt.
 echo ok >"$T/codex.mode"; rm -f "$T/claude.mode" "$T/state/claude.last"
+echo 1 >"$T/state/claude.reset"   # no window open
 past=$(date -v-1M +%H:%M 2>/dev/null || date -d '-1 min' +%H:%M)
 future=$(date -v+2H +%H:%M 2>/dev/null || date -d '+2 hour' +%H:%M)
 cfg '{"claude":{"mode":"schedule","times":["'$future'"]},"codex":{"mode":"off"}}'
@@ -81,10 +83,26 @@ if [ "$past" != 23:59 ]; then
   cfg '{"claude":{"mode":"schedule","times":["'$past'"],"days":['$(( ($(date +%w) + 1) % 7 ))']},"codex":{"mode":"off"}}'
   lk tick;  check "3 5" "slot on another weekday should not fire"
   cfg '{"claude":{"mode":"schedule","times":["'$past'","'$future'"],"days":['$(date +%w)'],"prompt":"Hello forge"},"codex":{"mode":"off"}}'
+  echo $(( $(date +%s) + 600 )) >"$T/state/claude.reset"
+  lk tick;  check "3 5" "slot should wait while a window is still open"
+  echo 1 >"$T/state/claude.reset"
   lk tick;  check "4 5" "past slot today should fire once"
   [ "$(cat "$T/claude.prompt")" = "Hello forge" ] || { echo "FAIL: saved prompt not used"; exit 1; }
   lk tick;  check "4 5" "slot should not fire twice"
 fi
+# A rejection without a reset time must not mean "ping every tick".
+cat >"$T/bin/claude" <<EOF
+#!/bin/sh
+[ "\$1" = --help ] && exit 0
+echo '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected"}}'; exit 1
+EOF
+lk ping claude
+[ "$(cat "$T/state/claude.reset")" -gt "$(date +%s)" ] || { echo "FAIL: rejected ping without resetsAt"; exit 1; }
+cat >"$T/bin/claude" <<EOF
+#!/bin/sh
+[ "\$1" = --help ] && exit 0
+printf '%s' "\$2" >"$T/claude.prompt"
+EOF
 UF_PROMPT="One-off" lk ping claude
 [ "$(cat "$T/claude.prompt")" = "One-off" ] || { echo "FAIL: UF_PROMPT not used"; exit 1; }
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.installed and (.config.claude.mode == "schedule")' >/dev/null ||

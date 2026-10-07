@@ -546,6 +546,7 @@ function build() {
     const endDrag = () => {
       if (!drag) return;
       const d = drag; drag = null;
+      bar.dataset.justDragged = "1";   // the click that follows belongs to this drag, not to "add a time"
       if (!d.moved) return renderTool(tool);
       const c = config[tool];
       const hit = clash(c.times, d.to, d.t);
@@ -553,7 +554,6 @@ function build() {
       if (hit) { toast(`That overlaps your ${clock(mins(hit))} window`, true); return renderTool(tool); }
       if (to === d.t) return renderTool(tool);
       c.times = c.times.map((t) => (t === d.t ? to : t)).sort((a, b) => mins(a) - mins(b));
-      bar.dataset.justDragged = "1";
       renderTool(tool); save();
     };
     bar.addEventListener("pointerup", endDrag);
@@ -635,9 +635,10 @@ function renderTool(tool) {
     // The next 24 hours from now: the window that's open, then one after another.
     const origin = nowMins();
     const r = new Date(s.reset * 1000);
-    const first = open ? origin + wrap(r.getHours() * 60 + r.getMinutes() - origin) : origin;
+    const far = s.reset - now >= 86400;   // e.g. waiting out the weekly cap
+    const first = far ? origin + 1440 : open ? origin + wrap(r.getHours() * 60 + r.getMinutes() - origin) : origin;
     const items = [];
-    if (open) items.push({ start: origin, len: first - origin, title: "Open now", sub: "", ghost: true });
+    if (open) items.push({ start: origin, len: first - origin, title: far ? "Waiting for the limit to reset" : "Open now", sub: "", ghost: true });
     for (let m = first; m < origin + 1440; m += WINDOW) items.push({ start: m, len: WINDOW, title: clock(m), sub: `to ${clock(m + WINDOW)}` });
     q(".plan-q").textContent = "Your next 24 hours: a new window as soon as each one ends";
     drawDay(node, items, { origin });
@@ -701,8 +702,9 @@ function render() {
 function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    try { state = await api("/api/config", config); saveTimer = 0; render(); toast("Saved"); }
+    try { state = await api("/api/config", config); render(); toast("Saved"); }
     catch (err) { toast(err.message, true); }
+    finally { saveTimer = 0; }
   }, 600);
 }
 

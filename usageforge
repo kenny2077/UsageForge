@@ -25,7 +25,8 @@ TOOLS="${UF_TOOLS:-$(command -v claude >/dev/null && echo claude) $(command -v c
 SESSIONS="${CODEX_HOME:-$HOME/.codex}/sessions"
 LABEL=dev.usageforge
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
-SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+# Resolve symlinks (e.g. ~/.local/bin/usageforge -> repo) so `ui` can find ui/server.py.
+SELF=$(readlink -f "$0" 2>/dev/null) || SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
 command -v jq >/dev/null || { echo "usageforge needs jq (brew install jq / apt install jq)" >&2; exit 1; }
 mkdir -p "$STATE"
@@ -105,7 +106,8 @@ ping_claude() {
   out=$(jq -Rc 'fromjson? | select(.type == "rate_limit_event") | .rate_limit_info' <<<"$out" | tail -1)
   [ -n "$out" ] && echo "$out" >"$STATE/claude.limits"
   if [ "$(jq -r '.status // empty' <<<"$out")" = rejected ]; then
-    int "$(jq -r '.resetsAt // empty' <<<"$out")" >"$STATE/claude.reset"; return 2
+    r=$(int "$(jq -r '.resetsAt // empty' <<<"$out")")
+    echo $(( r > 0 ? r : $(now) + 900 )) >"$STATE/claude.reset"; return 2
   fi
   [ $ok = 0 ] || return 1
   r=$(int "$(jq -r '.unifiedWindows.five_hour.resetsAt // (select(.rateLimitType == "five_hour") | .resetsAt) // empty' <<<"$out")")
@@ -125,8 +127,9 @@ ping_codex() {
   (cd "$STATE" && limit codex exec --skip-git-repo-check --sandbox read-only ${lean[@]+"${lean[@]}"} \
      -c model_reasoning_effort=low -o "$STATE/codex.reply" "$(prompt_for codex)" </dev/null >/dev/null 2>"$STATE/codex.err") ||
     { tail -n 5 "$STATE/codex.err" >>"$STATE/log"; return 1; }
-  # ponytail: assume this ping opened a 5h window; the Codex logs override it when readable.
-  echo $(( $(now) + 18000 )) >"$STATE/codex.reset"
+  # Trust the reset time Codex just logged; if a window was already open it ends sooner than 5h from now.
+  local r; r=$(int "$(codex_limits | jq '.primary.resets_at // 0' 2>/dev/null)")
+  echo $(( r > $(now) ? r : $(now) + 18000 )) >"$STATE/codex.reset"
 }
 
 ping() {
@@ -142,7 +145,7 @@ ping() {
     done
     case $rc in
       0) now >"$STATE/$t.last"; log "pinged $t (${UF_WHY:-manual}), window resets $(fmt "$(reset_at "$t")")" ;;
-      2) now >"$STATE/$t.last"; log "$t is rate-limited until $(fmt "$(reset_at "$t")")" ;;
+      2) log "$t is rate-limited until $(fmt "$(reset_at "$t")")" ;;
       *) log "ping $t failed (offline or logged out?); retrying in 15 min"; echo $(( $(now) + 900 )) >"$STATE/$t.backoff" ;;
     esac
   done
@@ -156,14 +159,19 @@ due() {
   case $(cfg "$t" mode) in
     watch) [ "$(now)" -ge "$(reset_at "$t")" ] ;;
     schedule)
+      # A message inside an open window doesn't start a new one: wait for it to end (still within the slot's 3 h).
+      [ "$(now)" -ge "$(reset_at "$t")" ] || return 1
       days=$(cfg "$t" days)
-      [ -z "$days" ] || [[ " $days " == *" $(date +%w) "* ]] || return 1
       last=$(int "$(cat "$STATE/$t.last" 2>/dev/null)")
       for time in $(cfg "$t" times); do
         [[ $time =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]] || continue
-        ts=$(int "$(at "$time")")
-        # Fire once per slot; a Mac that wakes up to 3 h late still catches up.
-        [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && return 0
+        # Today's slot, and yesterday's (a 23:30 slot still catches up at 00:40).
+        for back in 0 1; do
+          ts=$(( $(int "$(at "$time")") - back * 86400 ))
+          [ -z "$days" ] || [[ " $days " == *" $(( ($(date +%w) + 7 - back) % 7 )) "* ]] || continue
+          # Fire once per slot; a Mac that wakes up to 3 h late still catches up.
+          [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && return 0
+        done
       done
       return 1 ;;
     *) return 1 ;;
@@ -174,7 +182,12 @@ tick() {
   local t
   [ "$(wc -l 2>/dev/null <"$STATE/log" || echo 0)" -gt 2000 ] && { tail -n 1000 "$STATE/log" >"$STATE/log.tmp" && mv -f "$STATE/log.tmp" "$STATE/log"; }
   for t in claude codex; do
-    command -v "$t" >/dev/null || continue
+    if ! command -v "$t" >/dev/null; then
+      # Say so (hourly at most) instead of silently doing nothing.
+      [ -n "$(cfg "$t" mode | grep -v '^off$')" ] && [ -z "$(find "$STATE/$t.missing" -mmin -60 2>/dev/null)" ] &&
+        { log "skip $t: not found on the background job's PATH (run 'usageforge start' from a shell where it works)"; touch "$STATE/$t.missing"; }
+      continue
+    fi
     [ "$(now)" -lt "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" ] && continue
     due "$t" && { jitter; UF_WHY=$(cfg "$t" mode) ping "$t"; }
   done
@@ -239,6 +252,7 @@ stop() {
 }
 
 running() {
+  [ -x "$STATE/usageforge" ] || return 1
   if [ "$(uname)" = Darwin ]; then launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1
   else crontab -l 2>/dev/null | grep -q "# $LABEL\$"; fi
 }
