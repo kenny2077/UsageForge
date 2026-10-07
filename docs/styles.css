@@ -1033,9 +1033,10 @@ pre {
   font-size: 0.88em;
 }
 
-.hero-status {
-  margin-bottom: 26px;
-  text-align: left;
+/* Top-align the forge index with the headline, not the bottom of the copy. */
+.hero-inner .lab-index {
+  align-self: start;
+  margin-top: 6px;
 }
 
 /* Install command: one line, copyable. */
