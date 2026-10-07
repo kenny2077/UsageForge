@@ -15,140 +15,158 @@
   --deep: #02060e; --night: #050c1a; --night-2: #0a1426; --night-3: #111e36;
   --ink: #eaf2f8; --ink-2: #c8d6e4; --muted: #93a7bb; --faint: #62778d;
   --line: rgba(150, 205, 245, 0.14); --line-2: rgba(150, 205, 245, 0.28);
-  --aurora: #4fe3d0; --aurora-hi: #8cf2e6; --amber: #ffb547; --hot: #ff8a3d; --rose: #ff6f7d;
+  --aurora: #4fe3d0; --aurora-hi: #8cf2e6; --amber: #ffb547; --rose: #ff6f7d;
   --display: "Archivo", "Arial Narrow", Impact, sans-serif;
   --sans: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
   --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
   --ease: cubic-bezier(0.16, 1, 0.3, 1);
   --chamfer: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
   --chamfer-lg: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
-  --cell: 12px; --seam: 3px;
-  --lamps:
-    repeating-linear-gradient(90deg, transparent 0 calc(var(--cell) - var(--seam)), var(--deep) 0 var(--cell)),
-    repeating-linear-gradient(0deg, transparent 0 calc(var(--cell) - var(--seam)), var(--deep) 0 var(--cell));
   --gutter: max(clamp(16px, 4vw, 48px), calc((100% - 1320px) / 2));
 }
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--deep); color-scheme: dark; }
-body { margin: 0; min-height: 100vh; background: var(--night); color: var(--ink); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+body {
+  margin: 0; min-height: 100vh; color: var(--ink); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(60% 40% at 78% 0%, rgba(76, 201, 240, 0.16), transparent 70%),
+    radial-gradient(45% 35% at 22% 0%, rgba(79, 227, 208, 0.12), transparent 70%),
+    var(--night);
+  background-attachment: fixed;
+}
 h1, h2, h3 { margin: 0; font-family: var(--display); font-stretch: 72%; font-weight: 800; line-height: 0.94; letter-spacing: -0.01em; }
 p { margin: 0; }
 button, input, textarea { font: inherit; color: inherit; }
 ::selection { background: var(--aurora); color: var(--night); }
 :focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
 
-/* ---------- Header ---------- */
+/* ---------- Header: brand in the middle ---------- */
 .top {
   position: sticky; top: 0; z-index: 20;
-  display: flex; align-items: center; gap: 16px; height: 64px; padding: 0 var(--gutter);
-  background: rgba(5, 12, 26, 0.82); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 16px; height: 72px; padding: 0 var(--gutter);
+  background: rgba(5, 12, 26, 0.84); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line);
 }
-.brand { display: flex; align-items: center; gap: 10px; font: 700 17px/1 var(--display); font-stretch: 85%; color: var(--ink); text-decoration: none; }
+.top .left { justify-self: start; }
+.top .right { justify-self: end; display: flex; align-items: center; gap: 16px; }
+.brand { display: grid; justify-items: center; gap: 5px; color: var(--ink); text-decoration: none; }
+.brand .row { display: flex; align-items: center; gap: 10px; font: 700 19px/1 var(--display); font-stretch: 85%; }
 .brand img { width: 44px; height: 24px; image-rendering: pixelated; }
-.brand small { color: var(--faint); font: 500 11.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; margin-left: 6px; }
-.top .spacer { flex: 1; }
-.engine { display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px; font: 500 12.5px/1 var(--mono); letter-spacing: 0.06em; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); }
+.brand small { color: var(--faint); font: 500 11px/1 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+.engine { display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px; font: 500 12.5px/1 var(--mono); letter-spacing: 0.04em; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); }
 .dot { width: 8px; height: 8px; flex: none; background: var(--faint); }
 .engine.on .dot, .state.on .dot { background: var(--amber); box-shadow: 0 0 12px rgba(255, 181, 71, 0.7); animation: pulse 2.4s steps(2) infinite; }
 @keyframes pulse { 50% { opacity: 0.45; } }
-.top a.link { color: var(--muted); font-size: 14px; text-decoration: none; }
-.top a.link:hover { color: var(--ink); }
-
-/* ---------- Intro strip on the lamp board ---------- */
-.intro {
-  position: relative; padding: 44px var(--gutter) 40px; overflow: hidden;
-  background:
-    var(--lamps),
-    radial-gradient(60% 120% at 78% 0%, rgba(76, 201, 240, 0.30), transparent 70%),
-    radial-gradient(45% 100% at 22% 0%, rgba(79, 227, 208, 0.24), transparent 70%),
-    radial-gradient(30% 80% at 92% 10%, rgba(155, 125, 255, 0.20), transparent 70%),
-    linear-gradient(180deg, #030814, var(--night));
-}
-.kicker { color: var(--aurora); font: 500 12px/1.2 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
-.kicker::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 22px; vertical-align: 0.05em; background: currentColor; box-shadow: 12px 0 0 rgba(79, 227, 208, 0.35); }
-.intro h1 { margin-top: 16px; font-size: clamp(40px, 5vw, 68px); }
-.intro p { margin-top: 14px; max-width: 62ch; color: var(--ink-2); }
+a.link { color: var(--muted); font-size: 14px; text-decoration: none; }
+a.link:hover { color: var(--ink); }
 
 /* ---------- Tool panels ---------- */
 main { padding: 28px var(--gutter) 64px; }
-.panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; align-items: start; }
 .tool {
-  --tint: var(--amber);
-  position: relative; display: flex; flex-direction: column;
+  --tint: #d97757;
+  position: relative;
   background: linear-gradient(160deg, var(--night-3), var(--night-2) 55%);
   box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer-lg);
 }
-.tool[data-tool="codex"] { --tint: #6aa7ff; }
+.tool[data-tool="codex"] { --tint: #7a7cff; }
 .tool::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; opacity: 0.85; background: linear-gradient(90deg, transparent, var(--tint) 30%, var(--aurora) 70%, transparent); }
-.tool.armed { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 45%, transparent); }
-.sec { padding: 20px 24px; border-top: 1px solid var(--line); }
+.sec { padding: 22px 24px; border-top: 1px solid var(--line); }
 .sec:first-child { border-top: 0; }
-.label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: var(--faint); font: 500 11.5px/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
-.label em { font-style: normal; color: var(--muted); letter-spacing: 0.04em; text-transform: none; }
+.q { margin-bottom: 14px; font: 700 19px/1.2 var(--display); font-stretch: 82%; color: var(--ink); }
+.q small { display: block; margin-top: 4px; font: 400 13.5px/1.4 var(--sans); color: var(--muted); }
 
-.head { display: flex; align-items: center; gap: 14px; padding-top: 24px; }
-.tile { display: grid; place-items: center; width: 44px; height: 44px; flex: none; font: 800 17px/1 var(--display); font-stretch: 70%; color: var(--night); background: var(--tint); clip-path: var(--chamfer); }
+.head { display: flex; align-items: center; gap: 14px; padding-top: 26px; }
+.icon { width: 48px; height: 48px; flex: none; border-radius: 11px; box-shadow: 0 10px 24px -12px #000; }
+.tile { display: grid; place-items: center; width: 48px; height: 48px; flex: none; border-radius: 11px; font: 800 17px/1 var(--display); color: var(--night); background: var(--tint); }
 .head h2 { font-size: 34px; }
-.head .sub { margin-top: 4px; color: var(--muted); font: 500 12px/1.3 var(--mono); letter-spacing: 0.04em; }
+.head .sub { margin-top: 5px; color: var(--muted); font-size: 13.5px; }
 .head .sub.warn { color: var(--amber); }
-.state { margin-left: auto; display: inline-flex; align-items: center; gap: 9px; color: var(--ink-2); font: 500 12.5px/1.3 var(--mono); text-align: right; }
+.state { margin-left: auto; display: inline-flex; align-items: center; gap: 9px; padding: 8px 12px; color: var(--ink-2); font: 500 12.5px/1.2 var(--mono); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); white-space: nowrap; }
 
-/* Lamp meters */
-.meters { display: grid; gap: 14px; }
-.meter { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: 14px; }
-.meter .name { color: var(--muted); font-size: 13.5px; }
-.meter .val { color: var(--ink-2); font: 500 12.5px/1.3 var(--mono); white-space: nowrap; text-align: right; min-width: 128px; }
+/* Meters */
+.meters { display: grid; gap: 12px; }
+.meter { display: grid; grid-template-columns: 130px minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.meter .name { color: var(--ink-2); font-size: 14px; }
+.meter .val { color: var(--muted); font: 500 12.5px/1.3 var(--mono); white-space: nowrap; text-align: right; min-width: 150px; }
+.meter .val b { color: var(--ink); font-weight: 600; }
 .lamps { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; }
 .lamps i { height: 10px; background: rgba(150, 205, 245, 0.08); }
 .lamps i.on { background: var(--aurora); }
 .lamps.high i.on { background: var(--amber); }
 .lamps.full i.on { background: var(--rose); }
 
-/* Segmented control with a sliding indicator */
-.seg { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); padding: 4px; background: var(--night); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); }
-.seg button { position: relative; z-index: 1; padding: 10px 8px; border: 0; background: none; cursor: pointer; color: var(--muted); font: 600 12.5px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; transition: color 0.2s; }
-.seg button[aria-pressed="true"] { color: var(--night); }
-.seg .slide { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); background: var(--aurora); clip-path: var(--chamfer); transition: transform 0.35s var(--ease); }
-.hint { margin-top: 10px; color: var(--muted); font-size: 13.5px; }
-
-/* Schedule */
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
-.chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 8px 7px 12px; font: 600 14px/1 var(--mono); color: var(--ink); background: rgba(255, 181, 71, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 181, 71, 0.45); clip-path: var(--chamfer); }
-.chip button { width: 22px; height: 22px; border: 0; background: rgba(234, 242, 248, 0.08); color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
-.chip button:hover { color: var(--ink); background: rgba(234, 242, 248, 0.16); }
-.add { display: inline-flex; gap: 6px; }
-input[type="time"], input[type="text"], textarea {
-  padding: 8px 10px; background: var(--night); border: 0; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink); clip-path: var(--chamfer);
+/* Mode as three choice cards */
+.modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.mode {
+  display: grid; align-content: start; gap: 6px; padding: 14px; text-align: left; cursor: pointer; border: 0;
+  background: rgba(234, 242, 248, 0.04); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer);
+  transition: background 0.2s, box-shadow 0.2s;
 }
+.mode:hover { background: rgba(234, 242, 248, 0.07); }
+.mode .glyph { display: grid; grid-template-columns: repeat(6, 6px); gap: 2px; height: 14px; margin-bottom: 4px; }
+.mode .glyph i { background: rgba(150, 205, 245, 0.16); }
+.mode .glyph i.a { background: var(--amber); } .mode .glyph i.t { background: var(--aurora); }
+.mode b { font: 700 16px/1.15 var(--display); font-stretch: 85%; }
+.mode span { color: var(--muted); font-size: 13px; line-height: 1.4; }
+.mode[aria-checked="true"] { background: rgba(79, 227, 208, 0.1); box-shadow: inset 0 0 0 2px var(--aurora); }
+.mode:focus-visible { clip-path: none; }
+
+/* The day, drawn: one bar for 24 hours, windows as bands, pings as pins. */
+.day { position: relative; margin-top: 30px; }
+.bar { position: relative; height: 46px; cursor: copy; background: repeating-linear-gradient(90deg, rgba(150, 205, 245, 0.06) 0 calc(100% / 24 - 2px), transparent 0 calc(100% / 24)); box-shadow: inset 0 0 0 1px var(--line); }
+.bar.ro { cursor: default; }
+.band { position: absolute; top: 6px; bottom: 6px; display: flex; align-items: center; padding: 0 8px; overflow: hidden; white-space: nowrap; font: 600 11.5px/1 var(--mono); color: var(--night); background: linear-gradient(90deg, var(--aurora), color-mix(in srgb, var(--aurora) 70%, transparent)); }
+.band.ghost { background: rgba(79, 227, 208, 0.18); color: var(--aurora-hi); }
+.pin { position: absolute; top: -26px; bottom: 0; width: 2px; margin-left: -1px; background: var(--amber); pointer-events: none; }
+.pin span { position: absolute; top: 0; left: 50%; transform: translateX(-50%); padding: 3px 6px; white-space: nowrap; font: 600 11px/1 var(--mono); color: var(--night); background: var(--amber); }
+.nowline { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); opacity: 0.85; pointer-events: none; }
+.nowline::after { content: "now"; position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font: 500 10.5px/1 var(--mono); color: var(--ink-2); }
+.ticks { display: flex; justify-content: space-between; margin-top: 22px; color: var(--faint); font: 500 11px/1 var(--mono); }
+.tip { margin-top: 10px; color: var(--faint); font-size: 12.5px; }
+
+.list { display: grid; gap: 8px; margin-top: 18px; }
+.item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(234, 242, 248, 0.04); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); }
+.item .t { font: 700 15px/1 var(--mono); color: var(--amber); min-width: 76px; }
+.item .w { flex: 1; color: var(--muted); font-size: 13.5px; }
+.item button { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 6px; }
+.item button:hover { color: var(--rose); }
+.adder { display: flex; gap: 8px; margin-top: 10px; }
+input[type="time"], input[type="text"], textarea { padding: 9px 11px; background: var(--night); border: 0; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink); clip-path: var(--chamfer); }
 input[type="time"] { font-family: var(--mono); color-scheme: dark; }
 textarea { width: 100%; min-height: 64px; resize: vertical; line-height: 1.5; }
 input::placeholder, textarea::placeholder { color: var(--faint); }
-.days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 14px; }
-.days button { padding: 9px 0; border: 0; cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: 0.06em; color: var(--muted); background: rgba(150, 205, 245, 0.06); clip-path: var(--chamfer); transition: background 0.2s, color 0.2s; }
-.days button[aria-pressed="true"] { color: var(--night); background: var(--aurora); }
-.day24 { margin-top: 16px; }
-.day24 .row { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; }
-.day24 .row i { aspect-ratio: 1; max-height: 16px; background: rgba(150, 205, 245, 0.07); }
-.day24 .row i.w { background: rgba(79, 227, 208, 0.5); }
-.day24 .row i.p { background: var(--amber); box-shadow: 0 0 10px rgba(255, 181, 71, 0.6); }
-.day24 .row i.now { outline: 1px solid var(--ink-2); outline-offset: 1px; }
-.day24 .axis { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 6px; color: var(--faint); font: 500 11px/1 var(--mono); }
-.day24 .axis span:last-child { display: flex; justify-content: space-between; }
 
-.two { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; }
+.repeat { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 20px; }
+.repeat > span { color: var(--ink-2); font-size: 14px; }
+.days { display: flex; gap: 5px; }
+.days button, .presets button { border: 0; cursor: pointer; font: 600 12px/1 var(--mono); clip-path: var(--chamfer); transition: background 0.2s, color 0.2s; }
+.days button { width: 38px; padding: 9px 0; color: var(--muted); background: rgba(150, 205, 245, 0.07); }
+.days button[aria-pressed="true"] { color: var(--night); background: var(--aurora); }
+.presets { display: flex; gap: 5px; }
+.presets button { padding: 9px 10px; color: var(--muted); background: none; box-shadow: inset 0 0 0 1px var(--line); }
+.presets button:hover { color: var(--ink); }
+
+.chain { margin-top: 4px; color: var(--ink-2); font-size: 14px; }
+.chain b { color: var(--amber); font-weight: 600; }
+
+/* Advanced */
+details.adv summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; color: var(--ink-2); font-size: 14px; }
+details.adv summary::-webkit-details-marker { display: none; }
+details.adv summary::after { content: "+"; color: var(--aurora); font: 400 18px/1 var(--mono); }
+details.adv[open] summary::after { content: "−"; }
+.two { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; margin-top: 14px; }
 .two input { width: 100%; font-family: var(--mono); font-size: 13.5px; }
 .field-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
 
-/* Chat */
-.chat { display: flex; flex-direction: column; gap: 10px; max-height: 300px; min-height: 92px; overflow-y: auto; padding: 4px 2px 6px; }
+/* Try it now */
+.chat { display: flex; flex-direction: column; gap: 10px; max-height: 280px; min-height: 48px; overflow-y: auto; padding: 2px; }
 .msg { max-width: 86%; padding: 10px 13px; white-space: pre-wrap; overflow-wrap: anywhere; clip-path: var(--chamfer); }
 .msg.me { align-self: flex-end; color: var(--night); background: var(--aurora); }
 .msg.ai { align-self: flex-start; background: rgba(234, 242, 248, 0.06); box-shadow: inset 0 0 0 1px var(--line); }
-.msg.err { align-self: flex-start; color: var(--ink); background: rgba(255, 111, 125, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 111, 125, 0.5); }
+.msg.err { align-self: flex-start; background: rgba(255, 111, 125, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 111, 125, 0.5); }
 .msg small { display: block; margin-top: 6px; color: var(--faint); font: 500 11px/1.3 var(--mono); }
 .msg.me small { color: rgba(5, 12, 26, 0.6); }
-.empty { color: var(--faint); font-size: 13.5px; text-align: center; padding: 22px 0; }
 .typing { display: inline-flex; gap: 4px; }
 .typing i { width: 6px; height: 6px; background: var(--muted); animation: blink 1s steps(2) infinite; }
 .typing i:nth-child(2) { animation-delay: 0.2s; } .typing i:nth-child(3) { animation-delay: 0.4s; }
@@ -157,75 +175,73 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .composer input { flex: 1; min-width: 0; }
 
 /* Buttons */
-.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 9px 16px; border: 0; cursor: pointer; font: 600 14px/1 var(--sans); color: var(--night); background: var(--aurora); clip-path: var(--chamfer); transition: background 0.2s, transform 0.15s var(--ease); }
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 9px 16px; border: 0; cursor: pointer; font: 600 14px/1 var(--sans); color: var(--night); background: var(--aurora); clip-path: var(--chamfer); transition: background 0.2s, transform 0.15s var(--ease); white-space: nowrap; }
 .btn:hover { background: var(--aurora-hi); }
 .btn:active { transform: translateY(1px) scale(0.99); }
 .btn:disabled { cursor: not-allowed; opacity: 0.45; }
 .btn.ghost { color: var(--ink); background: rgba(234, 242, 248, 0.06); box-shadow: inset 0 0 0 1px var(--line-2); }
 .btn.ghost:hover { background: rgba(234, 242, 248, 0.11); }
-.btn:focus-visible, .seg button:focus-visible, .days button:focus-visible { clip-path: none; }
+.btn:focus-visible, .days button:focus-visible, .presets button:focus-visible { clip-path: none; }
 
 /* Activity */
 .activity { margin-top: 20px; background: var(--night-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer-lg); }
-.activity .bar { display: flex; align-items: center; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+.activity .bar2 { display: flex; align-items: center; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
 .activity h3 { font-size: 26px; }
 .activity .synced { margin-left: auto; color: var(--faint); font: 500 12px/1 var(--mono); }
-.activity .seg { width: 260px; }
-.loglines { margin: 0; padding: 14px 24px 20px; max-height: 320px; overflow: auto; font: 12.5px/1.75 var(--mono); color: var(--ink-2); }
+.filter { display: flex; gap: 4px; }
+.filter button { padding: 8px 12px; border: 0; cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: 0.06em; color: var(--muted); background: none; clip-path: var(--chamfer); }
+.filter button[aria-pressed="true"] { color: var(--night); background: var(--aurora); }
+.loglines { padding: 14px 24px 20px; max-height: 300px; overflow: auto; font: 12.5px/1.75 var(--mono); color: var(--ink-2); }
 .loglines div { white-space: pre-wrap; overflow-wrap: anywhere; }
 .loglines .t { color: var(--faint); }
 .loglines .bad { color: var(--rose); }
 .loglines .ok { color: var(--aurora); }
+.empty { color: var(--faint); font-size: 13.5px; text-align: center; padding: 18px 0; }
 
-/* Toast */
 .toasts { position: fixed; right: 20px; bottom: 20px; z-index: 50; display: grid; gap: 8px; }
 .toast { padding: 11px 14px; font: 500 13px/1.3 var(--mono); color: var(--ink); background: var(--night-3); box-shadow: inset 0 0 0 1px var(--line-2), 0 20px 40px -20px #000; clip-path: var(--chamfer); animation: rise 0.35s var(--ease); }
 .toast.bad { box-shadow: inset 0 0 0 1px rgba(255, 111, 125, 0.6); }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 
 .hidden { display: none !important; }
-.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-@media (max-width: 1040px) { .panels { grid-template-columns: 1fr; } }
-@media (max-width: 560px) {
-  .brand small, .top a.link { display: none; }
+@media (max-width: 1080px) { .panels { grid-template-columns: 1fr; } }
+@media (max-width: 600px) {
+  .top { grid-template-columns: auto 1fr; } .top .left { display: none; } .brand { justify-items: start; } .brand small { display: none; }
   .sec { padding: 18px 16px; }
+  .modes { grid-template-columns: 1fr; }
   .meter { grid-template-columns: 1fr auto; } .meter .lamps { grid-column: 1 / -1; grid-row: 2; }
   .two { grid-template-columns: 1fr; }
-  .activity .bar { flex-wrap: wrap; } .activity .seg { width: 100%; } .activity .synced { margin-left: 0; }
+  .band { font-size: 0; padding: 0; }
+  .activity .bar2 { flex-wrap: wrap; } .activity .synced { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
 </style>
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="/"><img src="/assets/usageforge-mark.svg" width="44" height="24" alt=""><span>UsageForge</span><small>Control panel</small></a>
-  <span class="spacer"></span>
-  <span class="engine" id="engine" role="status"><span class="dot"></span><span>Connecting…</span></span>
-  <a class="link" href="https://github.com/kenny2077/UsageForge#readme" target="_blank" rel="noopener noreferrer">Docs ↗</a>
+  <span class="left"><a class="link" href="https://github.com/kenny2077/UsageForge#readme" target="_blank" rel="noopener noreferrer">Help ↗</a></span>
+  <a class="brand" href="/">
+    <span class="row"><img src="/assets/usageforge-mark.svg" width="44" height="24" alt="">UsageForge</span>
+    <small>Your AI usage window, on your schedule</small>
+  </a>
+  <span class="right"><span class="engine" id="engine" role="status"><span class="dot"></span><span>Connecting…</span></span></span>
 </header>
-
-<section class="intro">
-  <p class="kicker">Usage windows</p>
-  <h1>Start each window when you want it.</h1>
-  <p>Pick fixed times or let UsageForge open the next window the minute the last one resets. Each tool has its own schedule, message and model. Changes save as you make them.</p>
-</section>
 
 <main>
   <div class="panels" id="panels"></div>
 
   <section class="activity" aria-labelledby="act-title">
-    <div class="bar">
+    <div class="bar2">
       <h3 id="act-title">Activity</h3>
-      <div class="seg" id="logfilter" role="group" aria-label="Filter activity">
-        <span class="slide"></span>
+      <div class="filter" id="logfilter" role="group" aria-label="Filter activity">
         <button type="button" data-v="all" aria-pressed="true">All</button>
         <button type="button" data-v="claude" aria-pressed="false">Claude</button>
         <button type="button" data-v="codex" aria-pressed="false">Codex</button>
       </div>
       <span class="synced" id="synced"></span>
     </div>
-    <div class="loglines" id="log"><p class="empty">No activity yet. Send a message or pick a mode.</p></div>
+    <div class="loglines" id="log"></div>
   </section>
 </main>
 <div class="toasts" id="toasts" aria-live="polite"></div>
@@ -239,54 +255,65 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
     </div>
 
     <div class="sec">
-      <p class="label">Right now</p>
       <div class="meters">
-        <div class="meter"><span class="name">5-hour window</span><div class="lamps five"></div><span class="val five-val"></span></div>
-        <div class="meter"><span class="name">Weekly</span><div class="lamps week"></div><span class="val week-val"></span></div>
+        <div class="meter"><span class="name">This 5-hour window</span><div class="lamps five"></div><span class="val five-val"></span></div>
+        <div class="meter"><span class="name">This week</span><div class="lamps week"></div><span class="val week-val"></span></div>
       </div>
     </div>
 
     <div class="sec">
-      <p class="label">Mode</p>
-      <div class="seg mode" role="group">
-        <span class="slide"></span>
-        <button type="button" data-v="off" aria-pressed="false">Off</button>
-        <button type="button" data-v="schedule" aria-pressed="false">Fixed times</button>
-        <button type="button" data-v="watch" aria-pressed="false">Watch resets</button>
+      <p class="q">How should it start your windows?</p>
+      <div class="modes" role="radiogroup">
+        <button type="button" class="mode" role="radio" data-v="off"><span class="glyph"><i></i><i></i><i></i><i></i><i></i><i></i></span><b>Off</b><span>Don't send anything.</span></button>
+        <button type="button" class="mode" role="radio" data-v="schedule"><span class="glyph"><i class="a"></i><i class="t"></i><i class="t"></i><i></i><i class="a"></i><i class="t"></i></span><b>At set times</b><span>Start a window at the times you pick.</span></button>
+        <button type="button" class="mode" role="radio" data-v="watch"><span class="glyph"><i class="a"></i><i class="t"></i><i class="a"></i><i class="t"></i><i class="a"></i><i class="t"></i></span><b>Back to back</b><span>Start a new window the moment one ends.</span></button>
       </div>
-      <p class="hint mode-hint"></p>
     </div>
 
-    <div class="sec schedule">
-      <p class="label">Ping times <em class="count"></em></p>
-      <div class="chips"></div>
-      <div class="add" style="margin-top:12px">
-        <input type="time" class="new-time" value="06:00" aria-label="New ping time">
-        <button type="button" class="btn ghost add-time">Add time</button>
+    <div class="sec plan">
+      <p class="q plan-q"></p>
+      <div class="day">
+        <div class="bar"></div>
+        <div class="ticks"></div>
       </div>
-      <div class="days" role="group" aria-label="Days"></div>
-      <div class="day24" aria-hidden="true">
-        <div class="row"></div>
-        <div class="axis"><span>00</span><span>06</span><span>12</span><span><span>18</span><span>24</span></span></div>
+      <p class="tip"></p>
+
+      <div class="when">
+        <div class="list"></div>
+        <div class="adder">
+          <input type="time" class="new-time" value="06:00" aria-label="Time to add">
+          <button type="button" class="btn ghost add-time">Add time</button>
+        </div>
+        <div class="repeat">
+          <span>Repeat on</span>
+          <div class="days" role="group" aria-label="Days"></div>
+          <div class="presets">
+            <button type="button" data-p="0,1,2,3,4,5,6">Every day</button>
+            <button type="button" data-p="1,2,3,4,5">Weekdays</button>
+            <button type="button" data-p="0,6">Weekends</button>
+          </div>
+        </div>
       </div>
-      <p class="hint">Amber: ping. Teal: the 5-hour window it opens.</p>
+      <p class="chain hidden"></p>
     </div>
 
     <div class="sec">
-      <p class="label">Message and model</p>
-      <div class="two">
-        <div><label class="field-label">Message</label><textarea class="prompt" maxlength="500" placeholder="Automatic: Good morning, Good afternoon or Good evening"></textarea></div>
-        <div><label class="field-label">Model</label><input type="text" class="model" maxlength="64" spellcheck="false" autocomplete="off"></div>
-      </div>
-    </div>
-
-    <div class="sec">
-      <p class="label">Send now <em>⌘/Ctrl + Enter</em></p>
+      <p class="q">Try it now<small>Sends one message right away. That starts a window if none is open.</small></p>
       <div class="chat" aria-live="polite"></div>
       <form class="composer">
-        <input type="text" class="say" maxlength="500" placeholder="Leave empty to send your saved message" aria-label="Message to send now">
+        <input type="text" class="say" maxlength="500" placeholder="Say something, or leave empty for a greeting" aria-label="Message to send now">
         <button type="submit" class="btn send">Send</button>
       </form>
+    </div>
+
+    <div class="sec">
+      <details class="adv">
+        <summary>Message and model</summary>
+        <div class="two">
+          <div><label class="field-label">Message sent each time</label><textarea class="prompt" maxlength="500" placeholder="Automatic: Good morning, Good afternoon or Good evening"></textarea></div>
+          <div><label class="field-label">Model</label><input type="text" class="model" maxlength="64" spellcheck="false" autocomplete="off"></div>
+        </div>
+      </details>
     </div>
   </article>
 </template>
@@ -295,16 +322,13 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 "use strict";
 const TOKEN = document.querySelector('meta[name="uf-token"]').content;
 const TOOLS = {
-  claude: { name: "Claude Code", tile: "CC", models: "haiku", placeholder: "haiku (default)" },
-  codex: { name: "Codex", tile: "CX", models: "", placeholder: "your Codex default" },
+  claude: { name: "Claude Code", tile: "CC", placeholder: "haiku (default)" },
+  codex: { name: "Codex", tile: "CX", placeholder: "Codex default" },
 };
-const DAYS = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"]];
-const HINTS = {
-  off: "UsageForge leaves this tool alone.",
-  schedule: "Sends one message at each time below, on the days you pick. A Mac that was asleep catches up within 3 hours.",
-  watch: "Checks every 5 minutes and opens the next window the minute the last one resets, all week.",
-};
+const DAYS = [[1, "M"], [2, "T"], [3, "W"], [4, "T"], [5, "F"], [6, "S"], [0, "S"]];
+const DAY_NAMES = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
 const DEFAULT = { mode: "off", times: ["06:00"], days: [0, 1, 2, 3, 4, 5, 6], prompt: "", model: "" };
+const WINDOW = 5 * 60; // minutes
 
 let state = null;
 let config = { claude: { ...DEFAULT }, codex: { ...DEFAULT } };
@@ -334,15 +358,17 @@ function toast(text, bad = false) {
   setTimeout(() => t.remove(), 2600);
 }
 
-// ---------- Helpers ----------
+// ---------- Time helpers (shown in the viewer's own 12h/24h format) ----------
 const pad = (n) => String(n).padStart(2, "0");
-const hm = (ts) => { const d = new Date(ts * 1000); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
-const day = (ts) => new Date(ts * 1000).toLocaleDateString(undefined, { weekday: "short" });
-const when = (ts) => {
-  const d = new Date(ts * 1000), today = new Date();
-  return d.toDateString() === today.toDateString() ? hm(ts) : `${day(ts)} ${hm(ts)}`;
-};
 const mins = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+const hhmm = (m) => `${pad(Math.floor(((m % 1440) + 1440) % 1440 / 60))}:${pad(((m % 60) + 60) % 60)}`;
+const clock = (m) => new Date(2000, 0, 1, 0, ((m % 1440) + 1440) % 1440).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const clockTs = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+const when = (ts) => {
+  const d = new Date(ts * 1000);
+  return d.toDateString() === new Date().toDateString() ? clockTs(ts) : `${d.toLocaleDateString([], { weekday: "short" })} ${clockTs(ts)}`;
+};
+const nowMins = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 
 function lampRow(el, pct) {
   const on = pct == null ? 0 : Math.round(Math.min(100, Math.max(0, pct)) / 5);
@@ -352,14 +378,6 @@ function lampRow(el, pct) {
   el.classList.toggle("full", pct >= 100);
 }
 
-function setSeg(seg, value) {
-  const buttons = [...seg.querySelectorAll("button")];
-  const i = Math.max(0, buttons.findIndex((b) => b.dataset.v === value));
-  buttons.forEach((b, k) => b.setAttribute("aria-pressed", String(k === i)));
-  seg.querySelector(".slide").style.transform = `translateX(${i * 100}%)`;
-}
-
-// Next ping for a schedule: the first enabled time after now, today or in the coming week.
 function nextScheduled(c) {
   if (!c.times.length || !c.days.length) return null;
   const now = new Date();
@@ -367,12 +385,53 @@ function nextScheduled(c) {
     const d = new Date(now); d.setDate(now.getDate() + add);
     if (!c.days.includes(d.getDay())) continue;
     for (const t of [...c.times].sort((a, b) => mins(a) - mins(b))) {
-      const [h, m] = t.split(":").map(Number);
-      const at = new Date(d); at.setHours(h, m, 0, 0);
+      const at = new Date(d); at.setHours(...t.split(":").map(Number), 0, 0);
       if (at > now) return at.getTime() / 1000;
     }
   }
   return null;
+}
+
+function daysText(days) {
+  const s = [...days].sort().join(",");
+  if (s === "0,1,2,3,4,5,6") return "every day";
+  if (s === "1,2,3,4,5") return "on weekdays";
+  if (s === "0,6") return "on weekends";
+  return "on " + days.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => DAY_NAMES[d]).join(", ");
+}
+
+// ---------- The 24-hour bar ----------
+// origin: the minute of day at the bar's left edge (midnight for set times, "now" for back to back).
+function drawDay(node, windows, pins, readOnly, origin = 0) {
+  const bar = node.querySelector(".bar");
+  bar.innerHTML = "";
+  bar.classList.toggle("ro", readOnly);
+  const pct = (m) => `${((((m - origin) % 1440) + 1440) % 1440 / 1440) * 100}%`;
+  for (const [start0, label, ghost] of windows) {
+    const start = (((start0 - origin) % 1440) + 1440) % 1440 + origin;
+    // A window that crosses midnight is drawn in two pieces.
+    const len = ghost ? label.len : WINDOW;
+    const end = origin + 1440;
+    for (const [a, b] of start + len > end ? (origin ? [[start, end]] : [[start, end], [origin, start + len - 1440]]) : [[start, start + len]]) {
+      const band = document.createElement("div");
+      band.className = "band" + (ghost ? " ghost" : "");
+      band.style.left = pct(a); band.style.width = `${((b - a) / 1440) * 100}%`;
+      if (a === start) band.textContent = ghost ? label.text : label;
+      bar.append(band);
+    }
+  }
+  for (const m of pins) {
+    const pin = document.createElement("div"); pin.className = "pin"; pin.style.left = pct(m);
+    const tag = document.createElement("span"); tag.textContent = clock(m); pin.append(tag); bar.append(pin);
+  }
+  if (!origin) { const now = document.createElement("div"); now.className = "nowline"; now.style.left = pct(nowMins()); bar.append(now); }
+  const ticks = node.querySelector(".ticks");
+  ticks.innerHTML = "";
+  for (const k of [0, 360, 720, 1080, 1440]) {
+    const s = document.createElement("span");
+    s.textContent = origin && k === 0 ? "Now" : clock(origin + k).replace(":00", "");
+    ticks.append(s);
+  }
 }
 
 // ---------- Rendering ----------
@@ -382,31 +441,45 @@ function build() {
     const node = tpl.content.firstElementChild.cloneNode(true);
     node.dataset.tool = tool;
     const q = (s) => node.querySelector(s);
+
+    // The tool's own app icon when available, letters otherwise.
+    const img = new Image(); img.className = "icon"; img.alt = ""; img.src = `/icons/${tool}.png`;
+    img.onload = () => q(".tile").replaceWith(img);
     q(".tile").textContent = TOOLS[tool].tile;
     q(".name").textContent = TOOLS[tool].name;
-    q(".mode").setAttribute("aria-label", `${TOOLS[tool].name} mode`);
+    q(".modes").setAttribute("aria-label", `${TOOLS[tool].name}: how to start windows`);
     q(".model").placeholder = TOOLS[tool].placeholder;
     for (const [v, label] of DAYS) {
       const b = document.createElement("button");
       b.type = "button"; b.dataset.v = v; b.textContent = label;
+      b.setAttribute("aria-label", DAY_NAMES[v].slice(0, -1));
       q(".days").append(b);
     }
-    for (let h = 0; h < 24; h++) q(".day24 .row").append(document.createElement("i"));
 
-    q(".mode").addEventListener("click", (e) => {
-      const b = e.target.closest("button"); if (!b) return;
+    q(".modes").addEventListener("click", (e) => {
+      const b = e.target.closest(".mode"); if (!b) return;
       config[tool].mode = b.dataset.v; renderTool(tool); save();
     });
+    const addTime = (t) => {
+      const c = config[tool];
+      if (c.times.includes(t)) return toast(`${clock(mins(t))} is already set`);
+      if (c.times.length >= 12) return toast("Up to 12 times", true);
+      c.times = [...c.times, t].sort((a, b) => mins(a) - mins(b));
+      renderTool(tool); save();
+    };
     q(".add-time").addEventListener("click", () => {
       const t = q(".new-time").value;
       if (!/^\d\d:\d\d$/.test(t)) return toast("Pick a time first", true);
-      const c = config[tool];
-      if (c.times.includes(t)) return toast(`${t} is already on the list`);
-      if (c.times.length >= 12) return toast("Up to 12 times per tool", true);
-      c.times = [...c.times, t].sort((a, b) => mins(a) - mins(b));
-      renderTool(tool); save();
+      addTime(t);
     });
-    q(".chips").addEventListener("click", (e) => {
+    // Tap the bar to add a time at that hour.
+    q(".bar").addEventListener("click", (e) => {
+      if (config[tool].mode !== "schedule") return;
+      const r = e.currentTarget.getBoundingClientRect();
+      const hour = Math.min(23, Math.floor(((e.clientX - r.left) / r.width) * 24));
+      addTime(`${pad(hour)}:00`);
+    });
+    q(".list").addEventListener("click", (e) => {
       const b = e.target.closest("button[data-t]"); if (!b) return;
       config[tool].times = config[tool].times.filter((t) => t !== b.dataset.t);
       renderTool(tool); save();
@@ -418,11 +491,13 @@ function build() {
       c.days = c.days.includes(v) ? c.days.filter((d) => d !== v) : [...c.days, v];
       renderTool(tool); save();
     });
+    q(".presets").addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      config[tool].days = b.dataset.p.split(",").map(Number); renderTool(tool); save();
+    });
     q(".prompt").addEventListener("input", (e) => { config[tool].prompt = e.target.value; save(); });
     q(".model").addEventListener("input", (e) => { config[tool].model = e.target.value.trim(); save(); });
     q(".composer").addEventListener("submit", (e) => { e.preventDefault(); send(tool); });
-    q(".say").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(tool); } });
-    q(".prompt").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(tool); } });
 
     document.getElementById("panels").append(node);
     els[tool] = node;
@@ -433,93 +508,94 @@ function renderTool(tool) {
   const node = els[tool], q = (s) => node.querySelector(s);
   const c = config[tool], s = state?.tools?.[tool] || {};
   const now = state?.now || Date.now() / 1000;
+  const open = s.reset > now;
 
-  q(".sub").textContent = s.installed ? `${tool} CLI found` : `${tool} CLI not found on PATH`;
+  q(".sub").textContent = s.installed ? "Ready" : `Not found on this computer`;
   q(".sub").classList.toggle("warn", !s.installed);
   q(".send").disabled = !s.installed;
-  q(".send").title = s.installed ? "" : `Install the ${tool} CLI first`;
 
-  // Live state sentence
   let text = "Off";
-  if (c.mode === "schedule") { const n = nextScheduled(c); text = n ? `Next ping ${when(n)}` : "No times set"; }
-  if (c.mode === "watch") text = s.reset > now ? `Next ping ${when(s.reset)}` : "Pings on next check";
-  if (c.mode !== "off" && state && !state.running) text = "Saving…";
+  if (c.mode === "schedule") { const n = nextScheduled(c); text = n ? `Next: ${when(n)}` : "No times set"; }
+  if (c.mode === "watch") text = open ? `Next: ${when(s.reset)}` : "Starting soon";
   if (s.backoff > now) text = `Retrying ${when(s.backoff)}`;
   q(".state-text").textContent = text;
   q(".state").classList.toggle("on", c.mode !== "off");
-  node.classList.toggle("armed", c.mode !== "off");
 
-  // Meters
-  lampRow(q(".five"), s.reset > now ? s.five_hour : 0);
-  q(".five-val").textContent = s.reset > now
-    ? `${s.five_hour != null ? Math.round(s.five_hour) + "% · " : ""}resets ${when(s.reset)}`
-    : "No window running";
+  lampRow(q(".five"), open ? s.five_hour : 0);
+  q(".five-val").innerHTML = "";
+  q(".five-val").append(open
+    ? Object.assign(document.createElement("span"), { textContent: `${s.five_hour != null ? Math.round(s.five_hour) + "% used · " : ""}resets ${when(s.reset)}` })
+    : "No window open");
   lampRow(q(".week"), s.weekly);
-  q(".week-val").textContent = s.weekly != null
-    ? `${Math.round(s.weekly)}%${s.weekly_reset ? " · resets " + when(s.weekly_reset) : ""}`
-    : "Unknown until first ping";
+  q(".week-val").textContent = s.weekly != null ? `${Math.round(s.weekly)}% used${s.weekly_reset ? " · resets " + when(s.weekly_reset) : ""}` : "Shown after the first message";
 
-  setSeg(q(".mode"), c.mode);
-  q(".mode-hint").textContent = HINTS[c.mode];
-  q(".schedule").classList.toggle("hidden", c.mode !== "schedule");
+  for (const b of q(".modes").children) b.setAttribute("aria-checked", String(b.dataset.v === c.mode));
 
-  // Schedule chips, days and the 24-hour preview
-  const chips = q(".chips"); chips.innerHTML = "";
-  for (const t of c.times) {
-    const chip = document.createElement("span"); chip.className = "chip"; chip.textContent = t;
-    const x = document.createElement("button"); x.type = "button"; x.dataset.t = t; x.textContent = "×"; x.setAttribute("aria-label", `Remove ${t}`);
-    chip.append(x); chips.append(chip);
+  // The plan: what the day looks like in this mode.
+  q(".plan").classList.toggle("hidden", c.mode === "off");
+  q(".when").classList.toggle("hidden", c.mode !== "schedule");
+  q(".chain").classList.toggle("hidden", c.mode !== "watch");
+  if (c.mode === "schedule") {
+    q(".plan-q").textContent = c.times.length ? `Your day: ${c.times.length === 1 ? "one window" : c.times.length + " windows"} ${daysText(c.days)}` : "Pick the times to start a window";
+    q(".tip").textContent = "Tap the bar to add a time at that hour. Each message opens a 5-hour window.";
+    drawDay(node, c.times.map((t) => [mins(t), `until ${clock(mins(t) + WINDOW)}`, false]), c.times.map(mins), false);
+    const list = q(".list"); list.innerHTML = "";
+    for (const t of c.times) {
+      const row = document.createElement("div"); row.className = "item";
+      const a = document.createElement("span"); a.className = "t"; a.textContent = clock(mins(t));
+      const w = document.createElement("span"); w.className = "w"; w.textContent = `window open until ${clock(mins(t) + WINDOW)}`;
+      const x = document.createElement("button"); x.type = "button"; x.dataset.t = t; x.textContent = "Remove";
+      row.append(a, w, x); list.append(row);
+    }
+    for (const b of q(".days").children) b.setAttribute("aria-pressed", String(c.days.includes(Number(b.dataset.v))));
   }
-  if (!c.times.length) { const e = document.createElement("span"); e.className = "hint"; e.textContent = "No times yet. Add one below."; chips.append(e); }
-  q(".count").textContent = c.times.length ? `${c.times.length} a day` : "";
-  for (const b of q(".days").children) b.setAttribute("aria-pressed", String(c.days.includes(Number(b.dataset.v))));
-  const cells = [...q(".day24 .row").children];
-  cells.forEach((cell) => (cell.className = ""));
-  for (const t of c.times) {
-    const h = Math.floor(mins(t) / 60);
-    for (let k = 1; k <= 4; k++) cells[(h + k) % 24].classList.add("w");
+  if (c.mode === "watch") {
+    // The next 24 hours from now: the window that's open, then one after another.
+    const origin = nowMins();
+    const r = new Date(s.reset * 1000);
+    const first = open ? origin + (((r.getHours() * 60 + r.getMinutes() - origin) % 1440) + 1440) % 1440 : origin;
+    const windows = [], pins = [];
+    if (open) windows.push([origin, { text: "open now", len: first - origin }, true]);
+    for (let m = first; m < origin + 1440; m += WINDOW) { windows.push([m, `from ${clock(m)}`, false]); pins.push(m); }
+    q(".plan-q").textContent = "Your next 24 hours: a new window as soon as each one ends";
+    q(".tip").textContent = "UsageForge checks every 5 minutes, all week.";
+    drawDay(node, windows, pins, true, origin);
+    q(".chain").innerHTML = "";
+    q(".chain").append("Next new window starts at ", Object.assign(document.createElement("b"), { textContent: open ? when(s.reset) : "the next check" }), ".");
   }
-  for (const t of c.times) { const cell = cells[Math.floor(mins(t) / 60)]; cell.classList.remove("w"); cell.classList.add("p"); }
-  cells[new Date().getHours()].classList.add("now");
 
-  // Inputs (don't clobber what the user is typing)
   if (document.activeElement !== q(".prompt")) q(".prompt").value = c.prompt || "";
   if (document.activeElement !== q(".model")) q(".model").value = c.model || "";
-
   renderChat(tool);
 }
 
 function renderChat(tool) {
   const box = els[tool].querySelector(".chat");
   box.innerHTML = "";
-  if (!chats[tool].length) {
-    const e = document.createElement("p"); e.className = "empty";
-    e.textContent = "No messages yet. Send one to start a window now.";
-    box.append(e); return;
-  }
   for (const m of chats[tool]) {
     const div = document.createElement("div");
     div.className = `msg ${m.from}`;
-    if (m.typing) { div.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>'; }
-    else { div.textContent = m.text; }
+    if (m.typing) div.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
+    else div.textContent = m.text;
     if (m.meta) { const s = document.createElement("small"); s.textContent = m.meta; div.append(s); }
     box.append(div);
   }
+  box.classList.toggle("hidden", !chats[tool].length);
   box.scrollTop = box.scrollHeight;
 }
 
 function renderEngine() {
   const e = document.getElementById("engine");
-  const on = state?.running;
-  e.classList.toggle("on", !!on);
-  e.lastElementChild.textContent = on ? "Checking every 5 min" : "Background check off";
+  e.classList.toggle("on", !!state?.running);
+  e.lastElementChild.textContent = state?.running ? "Running" : "Paused";
+  e.title = state?.running ? "UsageForge checks every 5 minutes in the background" : "Nothing is scheduled";
 }
 
 function renderLog() {
   const box = document.getElementById("log");
   const lines = (state?.log || []).filter((l) => !l.includes("rate_limit_info") && (logFilter === "all" || l.includes(logFilter))).slice(-60).reverse();
   box.innerHTML = "";
-  if (!lines.length) { const e = document.createElement("p"); e.className = "empty"; e.textContent = "No activity yet. Send a message or pick a mode."; box.append(e); return; }
+  if (!lines.length) { const e = document.createElement("p"); e.className = "empty"; e.textContent = "Nothing yet. Pick a mode or try a message."; box.append(e); return; }
   for (const line of lines) {
     const div = document.createElement("div");
     const m = line.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (.*)$/);
@@ -532,7 +608,7 @@ function renderLog() {
     } else div.textContent = line;
     box.append(div);
   }
-  document.getElementById("synced").textContent = `Synced ${hm(Date.now() / 1000)}`;
+  document.getElementById("synced").textContent = `Updated ${clockTs(Date.now() / 1000)}`;
 }
 
 function render() {
@@ -544,10 +620,8 @@ function render() {
 function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    try {
-      state = await api("/api/config", config);
-      render(); toast("Saved");
-    } catch (err) { toast(err.message, true); }
+    try { state = await api("/api/config", config); saveTimer = 0; render(); toast("Saved"); }
+    catch (err) { toast(err.message, true); }
   }, 600);
 }
 
@@ -556,8 +630,7 @@ async function send(tool) {
   const button = els[tool].querySelector(".send");
   if (button.disabled) return;
   const typed = input.value.trim();
-  const shown = typed || config[tool].prompt || "(automatic greeting)";
-  chats[tool].push({ from: "me", text: shown, meta: hm(Date.now() / 1000) });
+  chats[tool].push({ from: "me", text: typed || config[tool].prompt || "(greeting)", meta: clockTs(Date.now() / 1000) });
   chats[tool].push({ from: "ai", typing: true });
   input.value = ""; button.disabled = true; renderChat(tool);
   try {
@@ -566,40 +639,40 @@ async function send(tool) {
     chats[tool].pop();
     const s = state.tools[tool];
     if (r.ok) chats[tool].push({ from: "ai", text: s.reply || "(no reply text)", meta: s.reset ? `Window resets ${when(s.reset)}` : "" });
-    else chats[tool].push({ from: "err", text: r.output || "The ping failed. Check the activity log." });
+    else chats[tool].push({ from: "err", text: r.output || "That didn't go through. See Activity below." });
     render();
   } catch (err) {
     chats[tool].pop(); chats[tool].push({ from: "err", text: err.message }); renderChat(tool);
   } finally {
     button.disabled = !state?.tools?.[tool]?.installed;
-    chats[tool] = chats[tool].slice(-20);
-    try { localStorage.setItem("uf-chats", JSON.stringify({ claude: chats.claude.filter((m) => !m.typing), codex: chats.codex.filter((m) => !m.typing) })); } catch {}
+    chats[tool] = chats[tool].filter((m) => !m.typing).slice(-20);
+    try { localStorage.setItem("uf-chats", JSON.stringify(chats)); } catch {}
   }
 }
 
-async function refresh() {
+async function refresh(first) {
   try {
-    state = await api("/api/status");
-    for (const tool of Object.keys(TOOLS)) config[tool] = { ...DEFAULT, ...(state.config?.[tool] || {}) };
+    const fresh = await api("/api/status");
+    state = fresh;
+    if (first) for (const tool of Object.keys(TOOLS)) config[tool] = { ...DEFAULT, ...(state.config?.[tool] || {}) };
     render();
-  } catch (err) {
-    document.getElementById("engine").lastElementChild.textContent = "Panel server stopped";
+  } catch {
+    const e = document.getElementById("engine"); e.classList.remove("on"); e.lastElementChild.textContent = "Panel closed";
   }
 }
 
 document.getElementById("logfilter").addEventListener("click", (e) => {
   const b = e.target.closest("button"); if (!b) return;
-  logFilter = b.dataset.v; setSeg(document.getElementById("logfilter"), logFilter); renderLog();
+  logFilter = b.dataset.v;
+  for (const x of e.currentTarget.children) x.setAttribute("aria-pressed", String(x === b));
+  renderLog();
 });
 
 build();
 render();
-refresh();
-// Poll for new activity, but never overwrite settings mid-edit.
-setInterval(async () => {
-  if (saveTimer && document.activeElement?.matches("textarea, input")) return;
-  try { const fresh = await api("/api/status"); state = fresh; render(); } catch {}
-}, 30000);
+refresh(true);
+// Pick up new activity and the moving "now" line, without touching unsaved edits.
+setInterval(() => { if (!saveTimer) refresh(false); }, 30000);
 </script>
 </body>
 </html>

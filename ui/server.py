@@ -22,7 +22,12 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 STATE = Path(os.environ.get("UF_STATE") or Path.home() / ".local/state/usageforge").resolve()
 ASSETS = (HERE.parent / "docs" / "assets").resolve()
 TOKEN = secrets.token_urlsafe(24)
-TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2"}
+TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2", ".png": "image/png"}
+# The tools' own app icons, read from the apps you have installed (nothing is bundled).
+ICONS = {
+    "claude": "/Applications/Claude.app/Contents/Resources/electron.icns",
+    "codex": "/Applications/ChatGPT.app/Contents/Resources/icon-codex-dark-color.png",
+}
 
 TIME = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 MODEL = re.compile(r"^[A-Za-z0-9._-]{0,64}$")
@@ -52,6 +57,18 @@ def clean_tool(c):
 def cli(*args, env=None, timeout=420):
     return subprocess.run([CLI, *args], capture_output=True, text=True, timeout=timeout,
                           env={**os.environ, "UF_STATE": str(STATE), **(env or {})})
+
+
+def icon(tool):
+    """PNG of the tool's app icon, converted once with macOS `sips` and cached; None if unavailable."""
+    src = ICONS.get(tool)
+    if not src or not Path(src).is_file():
+        return None
+    cache = STATE / "icons" / f"{tool}.png"
+    if not cache.is_file():
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run(["sips", "-s", "format", "png", "-Z", "128", src, "--out", str(cache)], capture_output=True)
+    return cache.read_bytes() if cache.is_file() else None
 
 
 def status():
@@ -93,6 +110,10 @@ class Handler(BaseHTTPRequestHandler):
             f = (ASSETS / path[len("/assets/"):]).resolve()
             if ASSETS in f.parents and f.is_file() and f.suffix in TYPES:
                 return self.reply(200, f.read_bytes(), TYPES[f.suffix])
+        if path.startswith("/icons/") and path.endswith(".png"):
+            png = icon(path[len("/icons/"):-len(".png")])
+            if png:
+                return self.reply(200, png, "image/png")
         if path == "/api/status" and self.authed():
             return self.reply(200, status())
         self.reply(404)
