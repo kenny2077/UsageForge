@@ -1,5 +1,7 @@
 # UsageForge
 
+**Your AI usage window, on your schedule.** An [Aurora Forge Lab](https://auroraforgelab.com/) product.
+
 On the $20 Claude Pro / ChatGPT Plus plans, the 5-hour usage window starts with your first message.
 UsageForge sends that first message for you, so a fresh window is already running when you sit down to work.
 
@@ -56,6 +58,7 @@ Installing copies the script into the state directory and runs it from there. ma
   - **Rate-limited** (5-hour or weekly cap): UsageForge waits until the reset time the server reports. For Codex it reads the weekly figure from the logs, so it doesn't send pings that can't succeed.
   - **Anything else** (still offline after a wake-up, logged out): it retries 3 times, one minute apart, then backs off for 15 minutes.
   - **Hung ping:** each one is killed after 2 minutes.
+- Job pings wait a random 0–2 minutes (`UF_JITTER`, in seconds) so they don't land on the same second every day.
 - Logs go to `~/.local/state/usageforge/log`.
 
 ## Caveats
@@ -81,6 +84,10 @@ It covers watch-mode ticks, rejected pings, retry and backoff, the Codex weekly 
 ## Prior art
 
 [CCAutoRenew](https://github.com/aniketkarne/CCAutoRenew), [cwarm](https://pypi.org/project/cwarm/) and [claude-warmup](https://github.com/vdsmon/claude-warmup) are all Claude-only. `docs/research.md` compares them.
+
+## Upgrading from LimitKiller
+
+The project was renamed. Run `limitkiller stop` first, then install `usageforge` and pick a mode again.
 
 ## License
 
