@@ -1,0 +1,605 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="uf-token" content="__UF_TOKEN__">
+<meta name="color-scheme" content="dark">
+<title>UsageForge</title>
+<link rel="icon" href="/assets/usageforge-mark.svg" type="image/svg+xml">
+<style>
+@font-face { font-family: "Archivo"; src: url("/assets/fonts/archivo-var-latin.woff2") format("woff2"); font-weight: 100 900; font-stretch: 62% 125%; font-display: swap; }
+@font-face { font-family: "Instrument Sans"; src: url("/assets/fonts/instrument-sans-var-latin.woff2") format("woff2"); font-weight: 400 700; font-display: swap; }
+
+:root {
+  --deep: #02060e; --night: #050c1a; --night-2: #0a1426; --night-3: #111e36;
+  --ink: #eaf2f8; --ink-2: #c8d6e4; --muted: #93a7bb; --faint: #62778d;
+  --line: rgba(150, 205, 245, 0.14); --line-2: rgba(150, 205, 245, 0.28);
+  --aurora: #4fe3d0; --aurora-hi: #8cf2e6; --amber: #ffb547; --hot: #ff8a3d; --rose: #ff6f7d;
+  --display: "Archivo", "Arial Narrow", Impact, sans-serif;
+  --sans: "Instrument Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+  --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --chamfer: polygon(8px 0, calc(100% - 8px) 0, 100% 8px, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px), 0 8px);
+  --chamfer-lg: polygon(18px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%, 0 18px);
+  --cell: 12px; --seam: 3px;
+  --lamps:
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--cell) - var(--seam)), var(--deep) 0 var(--cell)),
+    repeating-linear-gradient(0deg, transparent 0 calc(var(--cell) - var(--seam)), var(--deep) 0 var(--cell));
+  --gutter: max(clamp(16px, 4vw, 48px), calc((100% - 1320px) / 2));
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { background: var(--deep); color-scheme: dark; }
+body { margin: 0; min-height: 100vh; background: var(--night); color: var(--ink); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+h1, h2, h3 { margin: 0; font-family: var(--display); font-stretch: 72%; font-weight: 800; line-height: 0.94; letter-spacing: -0.01em; }
+p { margin: 0; }
+button, input, textarea { font: inherit; color: inherit; }
+::selection { background: var(--aurora); color: var(--night); }
+:focus-visible { outline: 2px solid var(--amber); outline-offset: 3px; }
+
+/* ---------- Header ---------- */
+.top {
+  position: sticky; top: 0; z-index: 20;
+  display: flex; align-items: center; gap: 16px; height: 64px; padding: 0 var(--gutter);
+  background: rgba(5, 12, 26, 0.82); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  border-bottom: 1px solid var(--line);
+}
+.brand { display: flex; align-items: center; gap: 10px; font: 700 17px/1 var(--display); font-stretch: 85%; color: var(--ink); text-decoration: none; }
+.brand img { width: 44px; height: 24px; image-rendering: pixelated; }
+.brand small { color: var(--faint); font: 500 11.5px/1 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; margin-left: 6px; }
+.top .spacer { flex: 1; }
+.engine { display: inline-flex; align-items: center; gap: 10px; padding: 8px 12px; font: 500 12.5px/1 var(--mono); letter-spacing: 0.06em; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); }
+.dot { width: 8px; height: 8px; flex: none; background: var(--faint); }
+.engine.on .dot, .state.on .dot { background: var(--amber); box-shadow: 0 0 12px rgba(255, 181, 71, 0.7); animation: pulse 2.4s steps(2) infinite; }
+@keyframes pulse { 50% { opacity: 0.45; } }
+.top a.link { color: var(--muted); font-size: 14px; text-decoration: none; }
+.top a.link:hover { color: var(--ink); }
+
+/* ---------- Intro strip on the lamp board ---------- */
+.intro {
+  position: relative; padding: 44px var(--gutter) 40px; overflow: hidden;
+  background:
+    var(--lamps),
+    radial-gradient(60% 120% at 78% 0%, rgba(76, 201, 240, 0.30), transparent 70%),
+    radial-gradient(45% 100% at 22% 0%, rgba(79, 227, 208, 0.24), transparent 70%),
+    radial-gradient(30% 80% at 92% 10%, rgba(155, 125, 255, 0.20), transparent 70%),
+    linear-gradient(180deg, #030814, var(--night));
+}
+.kicker { color: var(--aurora); font: 500 12px/1.2 var(--mono); letter-spacing: 0.14em; text-transform: uppercase; }
+.kicker::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 22px; vertical-align: 0.05em; background: currentColor; box-shadow: 12px 0 0 rgba(79, 227, 208, 0.35); }
+.intro h1 { margin-top: 16px; font-size: clamp(40px, 5vw, 68px); }
+.intro p { margin-top: 14px; max-width: 62ch; color: var(--ink-2); }
+
+/* ---------- Tool panels ---------- */
+main { padding: 28px var(--gutter) 64px; }
+.panels { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+.tool {
+  --tint: var(--amber);
+  position: relative; display: flex; flex-direction: column;
+  background: linear-gradient(160deg, var(--night-3), var(--night-2) 55%);
+  box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer-lg);
+}
+.tool[data-tool="codex"] { --tint: #6aa7ff; }
+.tool::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; opacity: 0.85; background: linear-gradient(90deg, transparent, var(--tint) 30%, var(--aurora) 70%, transparent); }
+.tool.armed { box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 45%, transparent); }
+.sec { padding: 20px 24px; border-top: 1px solid var(--line); }
+.sec:first-child { border-top: 0; }
+.label { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; color: var(--faint); font: 500 11.5px/1.3 var(--mono); letter-spacing: 0.12em; text-transform: uppercase; }
+.label em { font-style: normal; color: var(--muted); letter-spacing: 0.04em; text-transform: none; }
+
+.head { display: flex; align-items: center; gap: 14px; padding-top: 24px; }
+.tile { display: grid; place-items: center; width: 44px; height: 44px; flex: none; font: 800 17px/1 var(--display); font-stretch: 70%; color: var(--night); background: var(--tint); clip-path: var(--chamfer); }
+.head h2 { font-size: 34px; }
+.head .sub { margin-top: 4px; color: var(--muted); font: 500 12px/1.3 var(--mono); letter-spacing: 0.04em; }
+.head .sub.warn { color: var(--amber); }
+.state { margin-left: auto; display: inline-flex; align-items: center; gap: 9px; color: var(--ink-2); font: 500 12.5px/1.3 var(--mono); text-align: right; }
+
+/* Lamp meters */
+.meters { display: grid; gap: 14px; }
+.meter { display: grid; grid-template-columns: 112px minmax(0, 1fr) auto; align-items: center; gap: 14px; }
+.meter .name { color: var(--muted); font-size: 13.5px; }
+.meter .val { color: var(--ink-2); font: 500 12.5px/1.3 var(--mono); white-space: nowrap; text-align: right; min-width: 128px; }
+.lamps { display: grid; grid-template-columns: repeat(20, 1fr); gap: 3px; }
+.lamps i { height: 10px; background: rgba(150, 205, 245, 0.08); }
+.lamps i.on { background: var(--aurora); }
+.lamps.high i.on { background: var(--amber); }
+.lamps.full i.on { background: var(--rose); }
+
+/* Segmented control with a sliding indicator */
+.seg { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); padding: 4px; background: var(--night); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); }
+.seg button { position: relative; z-index: 1; padding: 10px 8px; border: 0; background: none; cursor: pointer; color: var(--muted); font: 600 12.5px/1 var(--mono); letter-spacing: 0.08em; text-transform: uppercase; transition: color 0.2s; }
+.seg button[aria-pressed="true"] { color: var(--night); }
+.seg .slide { position: absolute; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 3); background: var(--aurora); clip-path: var(--chamfer); transition: transform 0.35s var(--ease); }
+.hint { margin-top: 10px; color: var(--muted); font-size: 13.5px; }
+
+/* Schedule */
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 8px 7px 12px; font: 600 14px/1 var(--mono); color: var(--ink); background: rgba(255, 181, 71, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 181, 71, 0.45); clip-path: var(--chamfer); }
+.chip button { width: 22px; height: 22px; border: 0; background: rgba(234, 242, 248, 0.08); color: var(--muted); cursor: pointer; font-size: 14px; line-height: 1; }
+.chip button:hover { color: var(--ink); background: rgba(234, 242, 248, 0.16); }
+.add { display: inline-flex; gap: 6px; }
+input[type="time"], input[type="text"], textarea {
+  padding: 8px 10px; background: var(--night); border: 0; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink); clip-path: var(--chamfer);
+}
+input[type="time"] { font-family: var(--mono); color-scheme: dark; }
+textarea { width: 100%; min-height: 64px; resize: vertical; line-height: 1.5; }
+input::placeholder, textarea::placeholder { color: var(--faint); }
+.days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; margin-top: 14px; }
+.days button { padding: 9px 0; border: 0; cursor: pointer; font: 600 12px/1 var(--mono); letter-spacing: 0.06em; color: var(--muted); background: rgba(150, 205, 245, 0.06); clip-path: var(--chamfer); transition: background 0.2s, color 0.2s; }
+.days button[aria-pressed="true"] { color: var(--night); background: var(--aurora); }
+.day24 { margin-top: 16px; }
+.day24 .row { display: grid; grid-template-columns: repeat(24, 1fr); gap: 3px; }
+.day24 .row i { aspect-ratio: 1; max-height: 16px; background: rgba(150, 205, 245, 0.07); }
+.day24 .row i.w { background: rgba(79, 227, 208, 0.5); }
+.day24 .row i.p { background: var(--amber); box-shadow: 0 0 10px rgba(255, 181, 71, 0.6); }
+.day24 .row i.now { outline: 1px solid var(--ink-2); outline-offset: 1px; }
+.day24 .axis { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 6px; color: var(--faint); font: 500 11px/1 var(--mono); }
+.day24 .axis span:last-child { display: flex; justify-content: space-between; }
+
+.two { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; }
+.two input { width: 100%; font-family: var(--mono); font-size: 13.5px; }
+.field-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
+
+/* Chat */
+.chat { display: flex; flex-direction: column; gap: 10px; max-height: 300px; min-height: 92px; overflow-y: auto; padding: 4px 2px 6px; }
+.msg { max-width: 86%; padding: 10px 13px; white-space: pre-wrap; overflow-wrap: anywhere; clip-path: var(--chamfer); }
+.msg.me { align-self: flex-end; color: var(--night); background: var(--aurora); }
+.msg.ai { align-self: flex-start; background: rgba(234, 242, 248, 0.06); box-shadow: inset 0 0 0 1px var(--line); }
+.msg.err { align-self: flex-start; color: var(--ink); background: rgba(255, 111, 125, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 111, 125, 0.5); }
+.msg small { display: block; margin-top: 6px; color: var(--faint); font: 500 11px/1.3 var(--mono); }
+.msg.me small { color: rgba(5, 12, 26, 0.6); }
+.empty { color: var(--faint); font-size: 13.5px; text-align: center; padding: 22px 0; }
+.typing { display: inline-flex; gap: 4px; }
+.typing i { width: 6px; height: 6px; background: var(--muted); animation: blink 1s steps(2) infinite; }
+.typing i:nth-child(2) { animation-delay: 0.2s; } .typing i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes blink { 50% { opacity: 0.2; } }
+.composer { display: flex; gap: 8px; margin-top: 10px; }
+.composer input { flex: 1; min-width: 0; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 9px 16px; border: 0; cursor: pointer; font: 600 14px/1 var(--sans); color: var(--night); background: var(--aurora); clip-path: var(--chamfer); transition: background 0.2s, transform 0.15s var(--ease); }
+.btn:hover { background: var(--aurora-hi); }
+.btn:active { transform: translateY(1px) scale(0.99); }
+.btn:disabled { cursor: not-allowed; opacity: 0.45; }
+.btn.ghost { color: var(--ink); background: rgba(234, 242, 248, 0.06); box-shadow: inset 0 0 0 1px var(--line-2); }
+.btn.ghost:hover { background: rgba(234, 242, 248, 0.11); }
+.btn:focus-visible, .seg button:focus-visible, .days button:focus-visible { clip-path: none; }
+
+/* Activity */
+.activity { margin-top: 20px; background: var(--night-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer-lg); }
+.activity .bar { display: flex; align-items: center; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
+.activity h3 { font-size: 26px; }
+.activity .synced { margin-left: auto; color: var(--faint); font: 500 12px/1 var(--mono); }
+.activity .seg { width: 260px; }
+.loglines { margin: 0; padding: 14px 24px 20px; max-height: 320px; overflow: auto; font: 12.5px/1.75 var(--mono); color: var(--ink-2); }
+.loglines div { white-space: pre-wrap; overflow-wrap: anywhere; }
+.loglines .t { color: var(--faint); }
+.loglines .bad { color: var(--rose); }
+.loglines .ok { color: var(--aurora); }
+
+/* Toast */
+.toasts { position: fixed; right: 20px; bottom: 20px; z-index: 50; display: grid; gap: 8px; }
+.toast { padding: 11px 14px; font: 500 13px/1.3 var(--mono); color: var(--ink); background: var(--night-3); box-shadow: inset 0 0 0 1px var(--line-2), 0 20px 40px -20px #000; clip-path: var(--chamfer); animation: rise 0.35s var(--ease); }
+.toast.bad { box-shadow: inset 0 0 0 1px rgba(255, 111, 125, 0.6); }
+@keyframes rise { from { opacity: 0; transform: translateY(12px); } }
+
+.hidden { display: none !important; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+@media (max-width: 1040px) { .panels { grid-template-columns: 1fr; } }
+@media (max-width: 560px) {
+  .brand small, .top a.link { display: none; }
+  .sec { padding: 18px 16px; }
+  .meter { grid-template-columns: 1fr auto; } .meter .lamps { grid-column: 1 / -1; grid-row: 2; }
+  .two { grid-template-columns: 1fr; }
+  .activity .bar { flex-wrap: wrap; } .activity .seg { width: 100%; } .activity .synced { margin-left: 0; }
+}
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/"><img src="/assets/usageforge-mark.svg" width="44" height="24" alt=""><span>UsageForge</span><small>Control panel</small></a>
+  <span class="spacer"></span>
+  <span class="engine" id="engine" role="status"><span class="dot"></span><span>Connecting…</span></span>
+  <a class="link" href="https://github.com/kenny2077/UsageForge#readme" target="_blank" rel="noopener noreferrer">Docs ↗</a>
+</header>
+
+<section class="intro">
+  <p class="kicker">Usage windows</p>
+  <h1>Start each window when you want it.</h1>
+  <p>Pick fixed times or let UsageForge open the next window the minute the last one resets. Each tool has its own schedule, message and model. Changes save as you make them.</p>
+</section>
+
+<main>
+  <div class="panels" id="panels"></div>
+
+  <section class="activity" aria-labelledby="act-title">
+    <div class="bar">
+      <h3 id="act-title">Activity</h3>
+      <div class="seg" id="logfilter" role="group" aria-label="Filter activity">
+        <span class="slide"></span>
+        <button type="button" data-v="all" aria-pressed="true">All</button>
+        <button type="button" data-v="claude" aria-pressed="false">Claude</button>
+        <button type="button" data-v="codex" aria-pressed="false">Codex</button>
+      </div>
+      <span class="synced" id="synced"></span>
+    </div>
+    <div class="loglines" id="log"><p class="empty">No activity yet. Send a message or pick a mode.</p></div>
+  </section>
+</main>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<template id="tool-tpl">
+  <article class="tool">
+    <div class="sec head">
+      <span class="tile"></span>
+      <div><h2 class="name"></h2><p class="sub"></p></div>
+      <span class="state"><span class="dot"></span><span class="state-text"></span></span>
+    </div>
+
+    <div class="sec">
+      <p class="label">Right now</p>
+      <div class="meters">
+        <div class="meter"><span class="name">5-hour window</span><div class="lamps five"></div><span class="val five-val"></span></div>
+        <div class="meter"><span class="name">Weekly</span><div class="lamps week"></div><span class="val week-val"></span></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <p class="label">Mode</p>
+      <div class="seg mode" role="group">
+        <span class="slide"></span>
+        <button type="button" data-v="off" aria-pressed="false">Off</button>
+        <button type="button" data-v="schedule" aria-pressed="false">Fixed times</button>
+        <button type="button" data-v="watch" aria-pressed="false">Watch resets</button>
+      </div>
+      <p class="hint mode-hint"></p>
+    </div>
+
+    <div class="sec schedule">
+      <p class="label">Ping times <em class="count"></em></p>
+      <div class="chips"></div>
+      <div class="add" style="margin-top:12px">
+        <input type="time" class="new-time" value="06:00" aria-label="New ping time">
+        <button type="button" class="btn ghost add-time">Add time</button>
+      </div>
+      <div class="days" role="group" aria-label="Days"></div>
+      <div class="day24" aria-hidden="true">
+        <div class="row"></div>
+        <div class="axis"><span>00</span><span>06</span><span>12</span><span><span>18</span><span>24</span></span></div>
+      </div>
+      <p class="hint">Amber: ping. Teal: the 5-hour window it opens.</p>
+    </div>
+
+    <div class="sec">
+      <p class="label">Message and model</p>
+      <div class="two">
+        <div><label class="field-label">Message</label><textarea class="prompt" maxlength="500" placeholder="Automatic: Good morning, Good afternoon or Good evening"></textarea></div>
+        <div><label class="field-label">Model</label><input type="text" class="model" maxlength="64" spellcheck="false" autocomplete="off"></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <p class="label">Send now <em>⌘/Ctrl + Enter</em></p>
+      <div class="chat" aria-live="polite"></div>
+      <form class="composer">
+        <input type="text" class="say" maxlength="500" placeholder="Leave empty to send your saved message" aria-label="Message to send now">
+        <button type="submit" class="btn send">Send</button>
+      </form>
+    </div>
+  </article>
+</template>
+
+<script>
+"use strict";
+const TOKEN = document.querySelector('meta[name="uf-token"]').content;
+const TOOLS = {
+  claude: { name: "Claude Code", tile: "CC", models: "haiku", placeholder: "haiku (default)" },
+  codex: { name: "Codex", tile: "CX", models: "", placeholder: "your Codex default" },
+};
+const DAYS = [[1, "Mon"], [2, "Tue"], [3, "Wed"], [4, "Thu"], [5, "Fri"], [6, "Sat"], [0, "Sun"]];
+const HINTS = {
+  off: "UsageForge leaves this tool alone.",
+  schedule: "Sends one message at each time below, on the days you pick. A Mac that was asleep catches up within 3 hours.",
+  watch: "Checks every 5 minutes and opens the next window the minute the last one resets, all week.",
+};
+const DEFAULT = { mode: "off", times: ["06:00"], days: [0, 1, 2, 3, 4, 5, 6], prompt: "", model: "" };
+
+let state = null;
+let config = { claude: { ...DEFAULT }, codex: { ...DEFAULT } };
+let saveTimer = 0;
+let logFilter = "all";
+const els = {};
+const chats = { claude: [], codex: [] };
+try { Object.assign(chats, JSON.parse(localStorage.getItem("uf-chats") || "{}")); } catch {}
+
+// ---------- API ----------
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: { "X-UF-Token": TOKEN, "Content-Type": "application/json" },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+  return data;
+}
+
+function toast(text, bad = false) {
+  const t = document.createElement("div");
+  t.className = "toast" + (bad ? " bad" : "");
+  t.textContent = text;
+  document.getElementById("toasts").append(t);
+  setTimeout(() => t.remove(), 2600);
+}
+
+// ---------- Helpers ----------
+const pad = (n) => String(n).padStart(2, "0");
+const hm = (ts) => { const d = new Date(ts * 1000); return `${pad(d.getHours())}:${pad(d.getMinutes())}`; };
+const day = (ts) => new Date(ts * 1000).toLocaleDateString(undefined, { weekday: "short" });
+const when = (ts) => {
+  const d = new Date(ts * 1000), today = new Date();
+  return d.toDateString() === today.toDateString() ? hm(ts) : `${day(ts)} ${hm(ts)}`;
+};
+const mins = (t) => { const [h, m] = t.split(":").map(Number); return h * 60 + m; };
+
+function lampRow(el, pct) {
+  const on = pct == null ? 0 : Math.round(Math.min(100, Math.max(0, pct)) / 5);
+  el.innerHTML = "";
+  for (let i = 0; i < 20; i++) { const c = document.createElement("i"); if (i < on) c.className = "on"; el.append(c); }
+  el.classList.toggle("high", pct >= 75 && pct < 100);
+  el.classList.toggle("full", pct >= 100);
+}
+
+function setSeg(seg, value) {
+  const buttons = [...seg.querySelectorAll("button")];
+  const i = Math.max(0, buttons.findIndex((b) => b.dataset.v === value));
+  buttons.forEach((b, k) => b.setAttribute("aria-pressed", String(k === i)));
+  seg.querySelector(".slide").style.transform = `translateX(${i * 100}%)`;
+}
+
+// Next ping for a schedule: the first enabled time after now, today or in the coming week.
+function nextScheduled(c) {
+  if (!c.times.length || !c.days.length) return null;
+  const now = new Date();
+  for (let add = 0; add < 8; add++) {
+    const d = new Date(now); d.setDate(now.getDate() + add);
+    if (!c.days.includes(d.getDay())) continue;
+    for (const t of [...c.times].sort((a, b) => mins(a) - mins(b))) {
+      const [h, m] = t.split(":").map(Number);
+      const at = new Date(d); at.setHours(h, m, 0, 0);
+      if (at > now) return at.getTime() / 1000;
+    }
+  }
+  return null;
+}
+
+// ---------- Rendering ----------
+function build() {
+  const tpl = document.getElementById("tool-tpl");
+  for (const tool of Object.keys(TOOLS)) {
+    const node = tpl.content.firstElementChild.cloneNode(true);
+    node.dataset.tool = tool;
+    const q = (s) => node.querySelector(s);
+    q(".tile").textContent = TOOLS[tool].tile;
+    q(".name").textContent = TOOLS[tool].name;
+    q(".mode").setAttribute("aria-label", `${TOOLS[tool].name} mode`);
+    q(".model").placeholder = TOOLS[tool].placeholder;
+    for (const [v, label] of DAYS) {
+      const b = document.createElement("button");
+      b.type = "button"; b.dataset.v = v; b.textContent = label;
+      q(".days").append(b);
+    }
+    for (let h = 0; h < 24; h++) q(".day24 .row").append(document.createElement("i"));
+
+    q(".mode").addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      config[tool].mode = b.dataset.v; renderTool(tool); save();
+    });
+    q(".add-time").addEventListener("click", () => {
+      const t = q(".new-time").value;
+      if (!/^\d\d:\d\d$/.test(t)) return toast("Pick a time first", true);
+      const c = config[tool];
+      if (c.times.includes(t)) return toast(`${t} is already on the list`);
+      if (c.times.length >= 12) return toast("Up to 12 times per tool", true);
+      c.times = [...c.times, t].sort((a, b) => mins(a) - mins(b));
+      renderTool(tool); save();
+    });
+    q(".chips").addEventListener("click", (e) => {
+      const b = e.target.closest("button[data-t]"); if (!b) return;
+      config[tool].times = config[tool].times.filter((t) => t !== b.dataset.t);
+      renderTool(tool); save();
+    });
+    q(".days").addEventListener("click", (e) => {
+      const b = e.target.closest("button"); if (!b) return;
+      const v = Number(b.dataset.v), c = config[tool];
+      if (c.days.includes(v) && c.days.length === 1) return toast("Keep at least one day", true);
+      c.days = c.days.includes(v) ? c.days.filter((d) => d !== v) : [...c.days, v];
+      renderTool(tool); save();
+    });
+    q(".prompt").addEventListener("input", (e) => { config[tool].prompt = e.target.value; save(); });
+    q(".model").addEventListener("input", (e) => { config[tool].model = e.target.value.trim(); save(); });
+    q(".composer").addEventListener("submit", (e) => { e.preventDefault(); send(tool); });
+    q(".say").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(tool); } });
+    q(".prompt").addEventListener("keydown", (e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(tool); } });
+
+    document.getElementById("panels").append(node);
+    els[tool] = node;
+  }
+}
+
+function renderTool(tool) {
+  const node = els[tool], q = (s) => node.querySelector(s);
+  const c = config[tool], s = state?.tools?.[tool] || {};
+  const now = state?.now || Date.now() / 1000;
+
+  q(".sub").textContent = s.installed ? `${tool} CLI found` : `${tool} CLI not found on PATH`;
+  q(".sub").classList.toggle("warn", !s.installed);
+  q(".send").disabled = !s.installed;
+  q(".send").title = s.installed ? "" : `Install the ${tool} CLI first`;
+
+  // Live state sentence
+  let text = "Off";
+  if (c.mode === "schedule") { const n = nextScheduled(c); text = n ? `Next ping ${when(n)}` : "No times set"; }
+  if (c.mode === "watch") text = s.reset > now ? `Next ping ${when(s.reset)}` : "Pings on next check";
+  if (c.mode !== "off" && state && !state.running) text = "Saving…";
+  if (s.backoff > now) text = `Retrying ${when(s.backoff)}`;
+  q(".state-text").textContent = text;
+  q(".state").classList.toggle("on", c.mode !== "off");
+  node.classList.toggle("armed", c.mode !== "off");
+
+  // Meters
+  lampRow(q(".five"), s.reset > now ? s.five_hour : 0);
+  q(".five-val").textContent = s.reset > now
+    ? `${s.five_hour != null ? Math.round(s.five_hour) + "% · " : ""}resets ${when(s.reset)}`
+    : "No window running";
+  lampRow(q(".week"), s.weekly);
+  q(".week-val").textContent = s.weekly != null
+    ? `${Math.round(s.weekly)}%${s.weekly_reset ? " · resets " + when(s.weekly_reset) : ""}`
+    : "Unknown until first ping";
+
+  setSeg(q(".mode"), c.mode);
+  q(".mode-hint").textContent = HINTS[c.mode];
+  q(".schedule").classList.toggle("hidden", c.mode !== "schedule");
+
+  // Schedule chips, days and the 24-hour preview
+  const chips = q(".chips"); chips.innerHTML = "";
+  for (const t of c.times) {
+    const chip = document.createElement("span"); chip.className = "chip"; chip.textContent = t;
+    const x = document.createElement("button"); x.type = "button"; x.dataset.t = t; x.textContent = "×"; x.setAttribute("aria-label", `Remove ${t}`);
+    chip.append(x); chips.append(chip);
+  }
+  if (!c.times.length) { const e = document.createElement("span"); e.className = "hint"; e.textContent = "No times yet. Add one below."; chips.append(e); }
+  q(".count").textContent = c.times.length ? `${c.times.length} a day` : "";
+  for (const b of q(".days").children) b.setAttribute("aria-pressed", String(c.days.includes(Number(b.dataset.v))));
+  const cells = [...q(".day24 .row").children];
+  cells.forEach((cell) => (cell.className = ""));
+  for (const t of c.times) {
+    const h = Math.floor(mins(t) / 60);
+    for (let k = 1; k <= 4; k++) cells[(h + k) % 24].classList.add("w");
+  }
+  for (const t of c.times) { const cell = cells[Math.floor(mins(t) / 60)]; cell.classList.remove("w"); cell.classList.add("p"); }
+  cells[new Date().getHours()].classList.add("now");
+
+  // Inputs (don't clobber what the user is typing)
+  if (document.activeElement !== q(".prompt")) q(".prompt").value = c.prompt || "";
+  if (document.activeElement !== q(".model")) q(".model").value = c.model || "";
+
+  renderChat(tool);
+}
+
+function renderChat(tool) {
+  const box = els[tool].querySelector(".chat");
+  box.innerHTML = "";
+  if (!chats[tool].length) {
+    const e = document.createElement("p"); e.className = "empty";
+    e.textContent = "No messages yet. Send one to start a window now.";
+    box.append(e); return;
+  }
+  for (const m of chats[tool]) {
+    const div = document.createElement("div");
+    div.className = `msg ${m.from}`;
+    if (m.typing) { div.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>'; }
+    else { div.textContent = m.text; }
+    if (m.meta) { const s = document.createElement("small"); s.textContent = m.meta; div.append(s); }
+    box.append(div);
+  }
+  box.scrollTop = box.scrollHeight;
+}
+
+function renderEngine() {
+  const e = document.getElementById("engine");
+  const on = state?.running;
+  e.classList.toggle("on", !!on);
+  e.lastElementChild.textContent = on ? "Checking every 5 min" : "Background check off";
+}
+
+function renderLog() {
+  const box = document.getElementById("log");
+  const lines = (state?.log || []).filter((l) => !l.includes("rate_limit_info") && (logFilter === "all" || l.includes(logFilter))).slice(-60).reverse();
+  box.innerHTML = "";
+  if (!lines.length) { const e = document.createElement("p"); e.className = "empty"; e.textContent = "No activity yet. Send a message or pick a mode."; box.append(e); return; }
+  for (const line of lines) {
+    const div = document.createElement("div");
+    const m = line.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (.*)$/);
+    if (m) {
+      const t = document.createElement("span"); t.className = "t"; t.textContent = m[1].slice(5, 16) + "  ";
+      const rest = document.createElement("span"); rest.textContent = m[2];
+      if (/failed|rate-limited|not installed|unknown/.test(m[2])) rest.className = "bad";
+      else if (/^pinged/.test(m[2])) rest.className = "ok";
+      div.append(t, rest);
+    } else div.textContent = line;
+    box.append(div);
+  }
+  document.getElementById("synced").textContent = `Synced ${hm(Date.now() / 1000)}`;
+}
+
+function render() {
+  for (const tool of Object.keys(TOOLS)) renderTool(tool);
+  renderEngine(); renderLog();
+}
+
+// ---------- Actions ----------
+function save() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      state = await api("/api/config", config);
+      render(); toast("Saved");
+    } catch (err) { toast(err.message, true); }
+  }, 600);
+}
+
+async function send(tool) {
+  const input = els[tool].querySelector(".say");
+  const button = els[tool].querySelector(".send");
+  if (button.disabled) return;
+  const typed = input.value.trim();
+  const shown = typed || config[tool].prompt || "(automatic greeting)";
+  chats[tool].push({ from: "me", text: shown, meta: hm(Date.now() / 1000) });
+  chats[tool].push({ from: "ai", typing: true });
+  input.value = ""; button.disabled = true; renderChat(tool);
+  try {
+    const r = await api("/api/ping", { tool, prompt: typed });
+    state = r.status;
+    chats[tool].pop();
+    const s = state.tools[tool];
+    if (r.ok) chats[tool].push({ from: "ai", text: s.reply || "(no reply text)", meta: s.reset ? `Window resets ${when(s.reset)}` : "" });
+    else chats[tool].push({ from: "err", text: r.output || "The ping failed. Check the activity log." });
+    render();
+  } catch (err) {
+    chats[tool].pop(); chats[tool].push({ from: "err", text: err.message }); renderChat(tool);
+  } finally {
+    button.disabled = !state?.tools?.[tool]?.installed;
+    chats[tool] = chats[tool].slice(-20);
+    try { localStorage.setItem("uf-chats", JSON.stringify({ claude: chats.claude.filter((m) => !m.typing), codex: chats.codex.filter((m) => !m.typing) })); } catch {}
+  }
+}
+
+async function refresh() {
+  try {
+    state = await api("/api/status");
+    for (const tool of Object.keys(TOOLS)) config[tool] = { ...DEFAULT, ...(state.config?.[tool] || {}) };
+    render();
+  } catch (err) {
+    document.getElementById("engine").lastElementChild.textContent = "Panel server stopped";
+  }
+}
+
+document.getElementById("logfilter").addEventListener("click", (e) => {
+  const b = e.target.closest("button"); if (!b) return;
+  logFilter = b.dataset.v; setSeg(document.getElementById("logfilter"), logFilter); renderLog();
+});
+
+build();
+render();
+refresh();
+// Poll for new activity, but never overwrite settings mid-edit.
+setInterval(async () => {
+  if (saveTimer && document.activeElement?.matches("textarea, input")) return;
+  try { const fresh = await api("/api/status"); state = fresh; render(); } catch {}
+}, 30000);
+</script>
+</body>
+</html>

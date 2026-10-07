@@ -20,7 +20,24 @@ ln -s "$PWD/usageforge" ~/.local/bin/usageforge   # any directory on your PATH
 You need `claude` (Claude Code) and/or `codex` installed and logged in. If the ChatGPT desktop app is installed, UsageForge uses the Codex CLI bundled inside it. Otherwise install it with `npm i -g @openai/codex`.
 UsageForge pings whichever of the two it finds.
 
-## Two modes (pick one; installing a mode replaces the other)
+## Control panel
+
+```bash
+usageforge ui        # opens http://127.0.0.1:4517 in your browser (needs python3)
+```
+
+The panel has one section each for Claude Code and Codex. In each you can:
+- pick a mode: **Off**, **Fixed times** or **Watch resets**
+- add ping times and choose the weekdays they run on, with a 24-hour preview of the windows they open
+- set the message and model
+- send a message now and see the reply as a chat
+
+Each section also shows the 5-hour and weekly meters. Changes save automatically, and the background check turns itself on or off to match.
+The panel only listens on 127.0.0.1, and every request must carry a random token that's created each time the panel starts.
+
+## Modes from the terminal
+
+`schedule` and `watch` set the mode for every installed tool (or only `UF_TOOLS="claude"`) and turn on the background check.
 
 **1. Schedule: ping at fixed times you choose.**
 ```bash
@@ -35,13 +52,13 @@ usageforge watch     # checks every 5 min; it only sends a message after a windo
 
 ```bash
 usageforge ping            # ping now (or: usageforge ping codex)
-usageforge status          # when each window resets, which mode is installed, and the recent log
-usageforge stop            # remove the job (state stays in ~/.local/state/usageforge)
+usageforge status          # each tool's mode and reset time, and the recent log (--json for scripts)
+usageforge start | stop    # turn the background check on / off (settings stay in ~/.local/state/usageforge)
 ```
 
-Settings come from environment variables, which are captured when you install a mode:
-`UF_TOOLS="claude"` (only ping Claude), `UF_CLAUDE_MODEL=haiku`, `UF_STATE=~/.local/state/usageforge`.
-Installing copies the script into the state directory and runs it from there. macOS doesn't let launchd jobs read `~/Desktop` or `~/Documents`, and the copy also keeps working if you move or delete the repo.
+Settings live in `~/.local/state/usageforge/config.json`. For each tool it stores `mode`, `times`, `days` (0 = Sunday), `prompt` and `model`.
+There's one background check, run every 5 minutes. It re-reads the settings each time, so changes take effect without reinstalling.
+`start` copies the script into the state directory and runs it from there. macOS doesn't let launchd jobs read `~/Desktop` or `~/Documents`, and the copy also keeps working if you move or delete the repo.
 
 ## How it works
 

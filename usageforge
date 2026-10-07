@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # UsageForge — your AI usage window, on your schedule. (Claude Code + Codex, 5-hour window)
 #
-#   usageforge ping [claude|codex]     send one tiny message now
-#   usageforge schedule 06:00 11:00    ping at these times every day   (mode 1)
-#   usageforge watch                   ping as soon as each window resets (mode 2)
-#   usageforge status                  show reset times, the installed job, recent log
-#   usageforge stop                    remove the schedule/watch job
+#   usageforge ui                       open the local control panel in your browser
+#   usageforge schedule 06:00 11:00     ping at these times every day        (mode: schedule)
+#   usageforge watch                    ping as soon as each window resets   (mode: watch)
+#   usageforge ping [claude|codex]      send one message now
+#   usageforge status [--json]          modes, reset times, recent log
+#   usageforge start | stop             turn the background check on / off
 #
-# Env (captured at install): UF_TOOLS="claude codex" (default: whichever is installed),
-#                            UF_CLAUDE_MODEL=haiku, UF_CODEX_MODEL=(your default),
-#                            UF_STATE=~/.local/state/usageforge
+# Settings live in ~/.local/state/usageforge/config.json, per tool: mode, times, days, prompt, model.
+# `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=2.1.0
+VERSION=3.0.0
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -20,7 +20,7 @@ command -v codex >/dev/null || { [ -x "$APP_CODEX/codex" ] && PATH="$PATH:$APP_C
 
 STATE="${UF_STATE:-$HOME/.local/state/usageforge}"
 case $STATE in /*) ;; *) STATE="$PWD/$STATE" ;; esac   # launchd runs jobs from /
-MODEL="${UF_CLAUDE_MODEL:-haiku}"
+CONFIG="$STATE/config.json"
 TOOLS="${UF_TOOLS:-$(command -v claude >/dev/null && echo claude) $(command -v codex >/dev/null && echo codex)}"
 SESSIONS="${CODEX_HOME:-$HOME/.codex}/sessions"
 LABEL=dev.usageforge
@@ -28,21 +28,53 @@ PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
 
 command -v jq >/dev/null || { echo "usageforge needs jq (brew install jq / apt install jq)" >&2; exit 1; }
-[[ $MODEL =~ ^[A-Za-z0-9._-]+$ ]] || { echo "bad UF_CLAUDE_MODEL: $MODEL" >&2; exit 1; }
-[[ ${UF_CODEX_MODEL:-x} =~ ^[A-Za-z0-9._-]+$ ]] || { echo "bad UF_CODEX_MODEL: $UF_CODEX_MODEL" >&2; exit 1; }
 mkdir -p "$STATE"
 
 log() { echo "$(date '+%F %T') $*" >>"$STATE/log"; echo "$*"; }
 now() { date +%s; }
 int() { [[ ${1:-} =~ ^[0-9]+$ ]] && echo "$1" || echo 0; }
 fmt() { date -d "@$1" '+%a %H:%M' 2>/dev/null || date -r "$1" '+%a %H:%M'; }
-# A plain greeting for the time of day is all a ping needs to say.
+# Epoch second of HH:MM today.
+at() { date -d "$(date +%F) $1" +%s 2>/dev/null || date -j -f '%Y-%m-%d %H:%M:%S' "$(date +%F) $1:00" +%s; }
+# A plain greeting for the time of day is the default ping.
 greet() { local h; h=$((10#$(date +%H))); [ "$h" -lt 12 ] && echo "Good morning" || { [ "$h" -lt 18 ] && echo "Good afternoon" || echo "Good evening"; }; }
 xml() { sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g' <<<"$1"; }
 # Jobs wait a random 0-2 min so pings don't land on the same second every day.
 jitter() { local j=${UF_JITTER:-120}; [ "$j" -gt 0 ] && sleep $(( RANDOM % j )); return 0; }
 # macOS has no `timeout`; a hung ping would block every later launchd run.
 limit() { perl -e 'alarm shift; exec @ARGV' 120 "$@"; }
+
+# ---------- Settings ----------
+
+# cfg <tool> <key>: one setting; arrays come back space-separated.
+cfg() { jq -r --arg t "$1" --arg k "$2" '.[$t][$k] // empty | if type == "array" then map(tostring) | join(" ") else tostring end' "$CONFIG" 2>/dev/null; }
+
+# set_mode <mode> [HH:MM...]: set the mode (and times) of every tool in $TOOLS.
+set_mode() {
+  local patch t
+  patch=$(jq -n --arg m "$1" '{mode: $m} + (if ($ARGS.positional | length) > 0 then {times: $ARGS.positional} else {} end)' --args "${@:2}")
+  for t in $TOOLS; do
+    { [ -s "$CONFIG" ] && cat "$CONFIG" || echo '{}'; } |
+      jq --arg t "$t" --argjson p "$patch" '.[$t] = ((.[$t] // {}) + $p)' >"$CONFIG.tmp" && mv -f "$CONFIG.tmp" "$CONFIG"
+  done
+}
+
+model_for() {
+  local m; m=$(cfg "$1" model)
+  [ -z "$m" ] && [ "$1" = claude ] && m=haiku
+  [[ -z $m || $m =~ ^[A-Za-z0-9._-]+$ ]] && echo "$m"
+}
+# UF_PROMPT (one-off, from the control panel) > saved prompt > greeting. Never starts with "-".
+prompt_for() { local p=${UF_PROMPT:-$(cfg "$1" prompt)}; p=${p:-$(greet)}; [[ $p == -* ]] && p=" $p"; printf '%s' "$p"; }
+
+# ---------- Reading the windows ----------
+
+# Newest rate_limits Codex wrote to its own session logs.
+codex_limits() {
+  find "$SESSIONS" -name 'rollout-*.jsonl' -mtime -8 -exec ls -t {} + 2>/dev/null | head -3 |
+    while IFS= read -r f; do grep -h '"rate_limits"' "$f"; done |
+    jq -sc 'map(.payload.rate_limits) | max_by(.primary.resets_at // 0) // {}' 2>/dev/null
+}
 
 # Epoch second when the tool may next be pinged (0 = now). Always prints one integer.
 reset_at() {
@@ -51,43 +83,47 @@ reset_at() {
     # Codex logs its own limits, so manual usage counts too. Weekly cap hit -> wait for the weekly reset.
     # Our own last ping (codex.reset) is the floor, so unreadable logs can never mean "ping every tick".
     codex) local log saved
-           log=$(int "$(find "$SESSIONS" -name 'rollout-*.jsonl' -mtime -8 -exec ls -t {} + 2>/dev/null | head -3 |
-             while IFS= read -r f; do grep -h '"rate_limits"' "$f"; done |
-             jq -s 'map(.payload.rate_limits | if (.secondary.used_percent // 0) >= 100
-                        then .secondary.resets_at else .primary.resets_at end // 0) | max // 0' 2>/dev/null)")
+           log=$(int "$(codex_limits | jq 'if (.secondary.used_percent // 0) >= 100 then .secondary.resets_at else .primary.resets_at end // 0' 2>/dev/null)")
            saved=$(int "$(cat "$STATE/codex.reset" 2>/dev/null)")
            [ "$log" -gt "$saved" ] && echo "$log" || echo "$saved" ;;
     *) echo 0 ;;
   esac
 }
 
+# ---------- Pinging ----------
+
 # Returns 0 on success, 2 if the account is rate-limited (reset time saved), 1 on other failure.
 ping_claude() {
-  local out ok=0 r
+  local out ok=0 r model safe=()
+  model=$(model_for claude) || return 1
   # Empty cwd + no user settings = no hooks/plugins/MCP/CLAUDE.md, so the ping costs almost nothing.
-  local safe=(); claude --help 2>/dev/null | grep -q -- --safe-mode && safe=(--safe-mode)
-  out=$(cd "$STATE" && limit claude -p "$(greet)" --model "$MODEL" --tools "" ${safe[@]+"${safe[@]}"} \
+  claude --help 2>/dev/null | grep -q -- --safe-mode && safe=(--safe-mode)
+  out=$(cd "$STATE" && limit claude -p "$(prompt_for claude)" --model "$model" --tools "" ${safe[@]+"${safe[@]}"} \
           --setting-sources project --strict-mcp-config --no-session-persistence \
           --output-format stream-json --verbose 2>>"$STATE/log") || ok=1
-  out=$(jq -Rc 'fromjson? | select(.type=="rate_limit_event") | .rate_limit_info' <<<"$out" | tail -1)
-  [ -n "$out" ] && echo "$(date '+%F %T') claude rate_limit_info: $out" >>"$STATE/log"
+  jq -Rr 'fromjson? | select(.type == "result") | .result // empty' <<<"$out" >"$STATE/claude.reply"
+  out=$(jq -Rc 'fromjson? | select(.type == "rate_limit_event") | .rate_limit_info' <<<"$out" | tail -1)
+  [ -n "$out" ] && echo "$out" >"$STATE/claude.limits"
   if [ "$(jq -r '.status // empty' <<<"$out")" = rejected ]; then
     int "$(jq -r '.resetsAt // empty' <<<"$out")" >"$STATE/claude.reset"; return 2
   fi
   [ $ok = 0 ] || return 1
-  r=$(int "$(jq -r '.unifiedWindows.five_hour.resetsAt // (select(.rateLimitType=="five_hour") | .resetsAt) // empty' <<<"$out")")
+  r=$(int "$(jq -r '.unifiedWindows.five_hour.resetsAt // (select(.rateLimitType == "five_hour") | .resetsAt) // empty' <<<"$out")")
   # ponytail: no five_hour info -> assume this ping opened a fresh 5h window.
   [ "$r" -gt 0 ] || r=$(( $(now) + 18000 ))
   echo "$r" >"$STATE/claude.reset"
 }
 
 ping_codex() {
+  local model lean=()
+  model=$(model_for codex) || return 1
   # --ignore-user-config skips ~/.codex/config.toml (MCP servers etc.) on CLIs that support it.
-  local lean=(); codex exec --help 2>/dev/null | grep -q -- --ignore-user-config && lean=(--ignore-user-config)
-  [ -n "${UF_CODEX_MODEL:-}" ] && lean+=(-m "$UF_CODEX_MODEL")
+  codex exec --help 2>/dev/null | grep -q -- --ignore-user-config && lean=(--ignore-user-config)
+  [ -n "$model" ] && lean+=(-m "$model")
   # Codex echoes the whole prompt (incl. your AGENTS.md) on stderr: keep it out of the log unless it failed.
+  rm -f "$STATE/codex.reply"
   (cd "$STATE" && limit codex exec --skip-git-repo-check --sandbox read-only ${lean[@]+"${lean[@]}"} \
-     -c model_reasoning_effort=low "$(greet)" </dev/null >/dev/null 2>"$STATE/codex.err") ||
+     -c model_reasoning_effort=low -o "$STATE/codex.reply" "$(prompt_for codex)" </dev/null >/dev/null 2>"$STATE/codex.err") ||
     { tail -n 5 "$STATE/codex.err" >>"$STATE/log"; return 1; }
   # ponytail: assume this ping opened a 5h window; the Codex logs override it when readable.
   echo $(( $(now) + 18000 )) >"$STATE/codex.reset"
@@ -105,35 +141,59 @@ ping() {
       break
     done
     case $rc in
-      0) log "pinged $t, window resets $(fmt "$(reset_at "$t")")" ;;
-      2) log "$t is rate-limited until $(fmt "$(reset_at "$t")")" ;;
-      *) log "ping $t failed (offline or logged out?); watch mode retries in 15 min"; echo $(( $(now) + 900 )) >"$STATE/$t.backoff" ;;
+      0) now >"$STATE/$t.last"; log "pinged $t (${UF_WHY:-manual}), window resets $(fmt "$(reset_at "$t")")" ;;
+      2) now >"$STATE/$t.last"; log "$t is rate-limited until $(fmt "$(reset_at "$t")")" ;;
+      *) log "ping $t failed (offline or logged out?); retrying in 15 min"; echo $(( $(now) + 900 )) >"$STATE/$t.backoff" ;;
     esac
   done
 }
 
-# Ping every tool whose window has ended. Cheap no-op otherwise; runs every 5 min in watch mode.
+# ---------- The 5-minute check ----------
+
+# due <tool>: should this tool be pinged right now, according to its mode?
+due() {
+  local t=$1 days time ts last
+  case $(cfg "$t" mode) in
+    watch) [ "$(now)" -ge "$(reset_at "$t")" ] ;;
+    schedule)
+      days=$(cfg "$t" days)
+      [ -z "$days" ] || [[ " $days " == *" $(date +%w) "* ]] || return 1
+      last=$(int "$(cat "$STATE/$t.last" 2>/dev/null)")
+      for time in $(cfg "$t" times); do
+        [[ $time =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]] || continue
+        ts=$(int "$(at "$time")")
+        # Fire once per slot; a Mac that wakes up to 3 h late still catches up.
+        [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && return 0
+      done
+      return 1 ;;
+    *) return 1 ;;
+  esac
+}
+
 tick() {
   local t
   [ "$(wc -l 2>/dev/null <"$STATE/log" || echo 0)" -gt 2000 ] && { tail -n 1000 "$STATE/log" >"$STATE/log.tmp" && mv -f "$STATE/log.tmp" "$STATE/log"; }
-  for t in $TOOLS; do
+  for t in claude codex; do
+    command -v "$t" >/dev/null || continue
     [ "$(now)" -lt "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" ] && continue
-    if [ "$(now)" -ge "$(reset_at "$t")" ]; then jitter; ping "$t"; fi
+    due "$t" && { jitter; UF_WHY=$(cfg "$t" mode) ping "$t"; }
   done
+  return 0
 }
 
-# install <cmd> <launchd schedule xml> <cron schedule lines...>
-install() {
-  local cmd=$1 sched=$2 bin="$STATE/usageforge" env line extra=""; shift 2
-  [ -n "${TOOLS// /}" ] || { echo "install failed: neither claude nor codex found on PATH" >&2; exit 1; }
+# ---------- Installing the check ----------
+
+# start: run `tick` every 5 minutes (launchd on macOS, cron elsewhere). Settings are re-read each time.
+start() {
+  local bin="$STATE/usageforge" env extra=""
   # Run a copy: launchd can't read ~/Desktop or ~/Documents (macOS privacy), and the repo may move.
   # Copy then rename, so a run that is mid-sleep keeps reading its own (old) file.
   if [ "$SELF" != "$bin" ]; then
-    cp "$SELF" "$bin.tmp" && chmod 700 "$bin.tmp" && mv -f "$bin.tmp" "$bin" || { echo "install failed: copy to $bin" >&2; exit 1; }
+    cp "$SELF" "$bin.tmp" && chmod 700 "$bin.tmp" && mv -f "$bin.tmp" "$bin" || { echo "start failed: copy to $bin" >&2; exit 1; }
   fi
   if [ "$(uname)" = Darwin ]; then
     # launchd (not cron): runs in your login session so `claude` can read its Keychain token,
-    # and runs missed jobs when the Mac wakes up.
+    # and runs missed checks when the Mac wakes up.
     mkdir -p "$(dirname "$PLIST")"
     [ -n "${CODEX_HOME:-}" ] && extra="<key>CODEX_HOME</key><string>$(xml "$CODEX_HOME")</string>"
     cat >"$PLIST.tmp" <<EOF
@@ -141,34 +201,32 @@ install() {
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>$LABEL</string>
-  <key>ProgramArguments</key><array><string>$(xml "$bin")</string><string>$cmd</string></array>
+  <key>ProgramArguments</key><array><string>$(xml "$bin")</string><string>tick</string></array>
   <key>EnvironmentVariables</key><dict>
     <key>PATH</key><string>$(xml "$PATH")</string>
-    <key>UF_TOOLS</key><string>$(xml "$TOOLS")</string>
-    <key>UF_CLAUDE_MODEL</key><string>$MODEL</string>
     <key>UF_STATE</key><string>$(xml "$STATE")</string>
-    <key>UF_CODEX_MODEL</key><string>${UF_CODEX_MODEL:-}</string>
     $extra
   </dict>
-  $sched
+  <key>StartInterval</key><integer>300</integer>
+  <key>RunAtLoad</key><true/>
   <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>$(xml "$STATE/log")</string>
 </dict></plist>
 EOF
-    plutil -lint -s "$PLIST.tmp" || { echo "install failed: bad plist" >&2; rm -f "$PLIST.tmp"; exit 1; }
+    plutil -lint -s "$PLIST.tmp" || { echo "start failed: bad plist" >&2; rm -f "$PLIST.tmp"; exit 1; }
     stop >/dev/null; mv -f "$PLIST.tmp" "$PLIST"
     # bootstrap right after bootout sometimes fails with "I/O error"; one retry fixes it.
     launchctl bootstrap "gui/$(id -u)" "$PLIST" 2>/dev/null || { sleep 2; launchctl bootstrap "gui/$(id -u)" "$PLIST"; } ||
-      { echo "install failed: launchctl bootstrap" >&2; exit 1; }
+      { echo "start failed: launchctl bootstrap" >&2; exit 1; }
   else
     stop >/dev/null
-    env="PATH=$(printf %q "$PATH") UF_TOOLS=$(printf %q "$TOOLS") UF_CLAUDE_MODEL=$MODEL UF_STATE=$(printf %q "$STATE") UF_CODEX_MODEL=${UF_CODEX_MODEL:-}"
+    env="PATH=$(printf %q "$PATH") UF_STATE=$(printf %q "$STATE")"
     [ -n "${CODEX_HOME:-}" ] && env+=" CODEX_HOME=$(printf %q "$CODEX_HOME")"
     # cron treats % as a newline, so escape it everywhere on the line.
-    { crontab -l 2>/dev/null; for line in "$@"; do line="$line $env $(printf %q "$bin") $cmd"; echo "${line//%/\\%} # $LABEL"; done; } | crontab - ||
-      { echo "install failed: crontab" >&2; exit 1; }
+    local line="*/5 * * * * $env $(printf %q "$bin") tick"
+    { crontab -l 2>/dev/null; echo "${line//%/\\%} # $LABEL"; } | crontab - || { echo "start failed: crontab" >&2; exit 1; }
   fi
-  echo "installed: $cmd for [$TOOLS]. Log: $STATE/log"
+  echo "started: checking every 5 minutes. Log: $STATE/log"
 }
 
 stop() {
@@ -177,34 +235,66 @@ stop() {
   else
     crontab -l 2>/dev/null | grep -v "# $LABEL\$" | crontab -
   fi
-  echo "stopped (state kept in $STATE)"
+  echo "stopped (settings kept in $STATE)"
+}
+
+running() {
+  if [ "$(uname)" = Darwin ]; then launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1
+  else crontab -l 2>/dev/null | grep -q "# $LABEL\$"; fi
 }
 
 schedule() {
+  local t
   [ $# -gt 0 ] || { echo "usage: usageforge schedule HH:MM [HH:MM...]"; exit 1; }
-  local sched="<key>StartCalendarInterval</key><array>" cron=() t h m
-  for t in "$@"; do
-    [[ $t =~ ^([01]?[0-9]|2[0-3]):([0-5][0-9])$ ]] || { echo "bad time: $t (want HH:MM)"; exit 1; }
-    h=$((10#${BASH_REMATCH[1]})) m=$((10#${BASH_REMATCH[2]}))
-    sched+="<dict><key>Hour</key><integer>$h</integer><key>Minute</key><integer>$m</integer></dict>"
-    cron+=("$m $h * * *")
-  done
-  install scheduled "$sched</array>" "${cron[@]}"
+  for t in "$@"; do [[ $t =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]] || { echo "bad time: $t (want HH:MM)"; exit 1; }; done
+  [ -n "${TOOLS// /}" ] || { echo "neither claude nor codex found on PATH" >&2; exit 1; }
+  set_mode schedule "$@" && start
 }
 
+watch() {
+  [ -n "${TOOLS// /}" ] || { echo "neither claude nor codex found on PATH" >&2; exit 1; }
+  set_mode watch && start
+}
+
+# ---------- Status ----------
+
 status() {
-  local t r job
-  for t in $TOOLS; do
-    r=$(reset_at "$t"); [ "$r" -gt "$(now)" ] && echo "$t: window resets $(fmt "$r")" || echo "$t: no window running"
+  local t r m
+  for t in claude codex; do
+    command -v "$t" >/dev/null || continue
+    r=$(reset_at "$t")
+    m=$(cfg "$t" mode); printf '%s: mode %s, ' "$t" "${m:-off}"
+    [ "$r" -gt "$(now)" ] && echo "window resets $(fmt "$r")" || echo "no window running"
   done
-  if [ "$(uname)" = Darwin ]; then
-    launchctl print "gui/$(id -u)/$LABEL" >/dev/null 2>&1 && job=$(grep -oE '<string>(scheduled|tick)</string>' "$PLIST" | sed 's/<[^>]*>//g')
-  else
-    job=$(crontab -l 2>/dev/null | grep "# $LABEL\$" | grep -oE '(scheduled|tick) #' | head -1 | cut -d' ' -f1)
-  fi
-  case ${job:-} in scheduled) echo "job: schedule" ;; tick) echo "job: watch" ;; *) echo "job: none" ;; esac
+  running && echo "check: on (every 5 min)" || echo "check: off"
   [ -f "$STATE/log" ] && { echo "recent log:"; tail -n 5 "$STATE/log" | sed 's/^/  /'; }
   return 0
+}
+
+# Everything the control panel shows, as one JSON object.
+status_json() {
+  local t tools='{}' entry limits
+  for t in claude codex; do
+    if [ "$t" = claude ]; then
+      limits=$(jq -c '{five_hour: ((.unifiedWindows.five_hour.utilization // null) | if . then . * 100 else null end),
+                       weekly: ((.unifiedWindows.seven_day.utilization // null) | if . then . * 100 else null end),
+                       weekly_reset: (.unifiedWindows.seven_day.resetsAt // null)}' "$STATE/claude.limits" 2>/dev/null)
+    else
+      limits=$(codex_limits | jq -c '{five_hour: (.primary.used_percent // null), weekly: (.secondary.used_percent // null),
+                                      weekly_reset: (.secondary.resets_at // null)}' 2>/dev/null)
+    fi
+    entry=$(jq -n --argjson installed "$(command -v "$t" >/dev/null && echo true || echo false)" \
+      --argjson reset "$(reset_at "$t")" --argjson last "$(int "$(cat "$STATE/$t.last" 2>/dev/null)")" \
+      --argjson backoff "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" \
+      --arg reply "$(head -c 4000 "$STATE/$t.reply" 2>/dev/null)" --argjson limits "${limits:-"{}"}" \
+      '{installed: $installed, reset: $reset, last: $last, backoff: $backoff, reply: $reply} + $limits')
+    tools=$(jq -c --arg t "$t" --argjson e "$entry" '.[$t] = $e' <<<"$tools")
+  done
+  jq -n --argjson tools "$tools" --argjson config "$( [ -s "$CONFIG" ] && cat "$CONFIG" || echo '{}')" \
+    --argjson running "$(running && echo true || echo false)" --argjson now "$(now)" \
+    --arg log "$(tail -n 40 "$STATE/log" 2>/dev/null)" --arg version "$VERSION" \
+    '{version: $version, now: $now, running: $running, config: $config, tools: $tools,
+      log: ($log | split("\n") | map(select(length > 0)))}'
 }
 
 # One job run at a time: cron (unlike launchd) will start a new run while a slow one still sleeps.
@@ -216,12 +306,15 @@ lock() {
 
 case "${1:-}" in
   ping) shift; ping "$@" ;;
-  scheduled) lock; jitter; ping ;;
   tick) lock; tick ;;
   schedule) shift; schedule "$@" ;;
-  watch) install tick "<key>StartInterval</key><integer>300</integer><key>RunAtLoad</key><true/>" "*/5 * * * *" ;;
-  status) status ;;
+  watch) watch ;;
+  start) start ;;
   stop) stop ;;
+  status) [ "${2:-}" = --json ] && status_json || status ;;
+  ui) command -v python3 >/dev/null || { echo "usageforge ui needs python3" >&2; exit 1; }
+      [ -f "$(dirname "$SELF")/ui/server.py" ] || { echo "run 'usageforge ui' from the UsageForge repo" >&2; exit 1; }
+      shift; exec python3 "$(dirname "$SELF")/ui/server.py" "$SELF" "$@" ;;
   -v|--version|version) echo "usageforge $VERSION" ;;
   *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac
