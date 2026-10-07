@@ -1,0 +1,145 @@
+#!/usr/bin/env bash
+# LimitKiller — start your Claude Code / Codex 5-hour usage window when YOU want.
+#
+#   limitkiller ping                    send one tiny message now
+#   limitkiller schedule 06:00 11:00    ping at these times every day   (mode 1)
+#   limitkiller watch                   ping as soon as each window resets (mode 2)
+#   limitkiller status                  show known reset times + what's installed
+#   limitkiller stop                    remove the schedule/watch job
+#
+# Env: LK_TOOLS="claude codex" (default: whichever is installed)  LK_MSG="hi"  LK_CLAUDE_MODEL=haiku  CODEX_BIN=codex
+set -uo pipefail
+
+STATE="${LK_STATE:-$HOME/.local/state/limitkiller}"
+MSG="${LK_MSG:-hi}"
+CODEX="${CODEX_BIN:-codex}"
+TOOLS="${LK_TOOLS:-$(command -v claude >/dev/null && echo claude) $(command -v "$CODEX" >/dev/null && echo codex)}"
+LABEL=dev.limitkiller
+PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+mkdir -p "$STATE"
+
+log() { echo "$(date '+%F %T') $*" >>"$STATE/log"; echo "$*"; }
+now() { date +%s; }
+fmt() { [ "${1:-0}" -gt 0 ] && { date -r "$1" '+%a %H:%M' 2>/dev/null || date -d "@$1" '+%a %H:%M'; } || echo unknown; }
+
+# Epoch second when the tool's current 5h window ends (0 = unknown / no window).
+reset_at() {
+  case $1 in
+    claude) cat "$STATE/claude.reset" 2>/dev/null || echo 0 ;;
+    # Codex logs its own limits; newest sessions win, so we see manual usage too.
+    codex) ls -t "$HOME"/.codex/sessions/*/*/*/rollout-*.jsonl 2>/dev/null | head -3 |
+             xargs grep -h '"rate_limits"' 2>/dev/null |
+             jq -s 'map(.payload.rate_limits.primary.resets_at // 0) | max // 0' 2>/dev/null || echo 0 ;;
+  esac
+}
+
+ping_claude() {
+  local out r
+  # Empty cwd + no user settings = no hooks/plugins/CLAUDE.md, so the ping costs almost nothing.
+  out=$(cd "$STATE" && claude -p "$MSG" --model "${LK_CLAUDE_MODEL:-haiku}" --tools "" \
+          --setting-sources project --strict-mcp-config --no-session-persistence \
+          --output-format stream-json --verbose 2>>"$STATE/log") || return 1
+  r=$(jq -Rr 'fromjson? | select(.type=="rate_limit_event") | .rate_limit_info
+              | select(.rateLimitType=="five_hour") | .resetsAt
+              | if . > 1e12 then ./1000 | floor else . end' <<<"$out" | tail -1)
+  # ponytail: no rate_limit_event -> assume the ping opened a fresh 5h window.
+  echo "${r:-$(( $(now) + 18000 ))}" >"$STATE/claude.reset"
+}
+
+ping_codex() {
+  "$CODEX" exec --skip-git-repo-check --sandbox read-only -C "$STATE" "$MSG" </dev/null >>"$STATE/log" 2>&1
+}
+
+ping() {
+  local t bin
+  for t in ${*:-$TOOLS}; do
+    case $t in claude) bin=claude ;; codex) bin=$CODEX ;; *) log "unknown tool: $t"; continue ;; esac
+    command -v "$bin" >/dev/null || { log "skip $t: '$bin' not found"; continue; }
+    if "ping_$t"; then log "pinged $t, window resets $(fmt "$(reset_at "$t")")"
+    else log "ping $t failed (limit hit or logged out?), retry in 1h"; echo $(( $(now) + 3600 )) >"$STATE/$t.backoff"; fi
+  done
+}
+
+# Ping every tool whose window has ended. Cheap no-op otherwise; runs every 5 min in watch mode.
+tick() {
+  local t
+  for t in $TOOLS; do
+    [ "$(now)" -lt "$(cat "$STATE/$t.backoff" 2>/dev/null || echo 0)" ] && continue
+    if [ "$(now)" -ge "$(reset_at "$t")" ]; then ping "$t"; fi
+  done
+}
+
+# install <cmd> <launchd schedule xml> <cron schedule lines...>
+install() {
+  local cmd=$1 xml=$2; shift 2
+  stop >/dev/null
+  if [ "$(uname)" = Darwin ]; then
+    # launchd (not cron): runs in your login session so `claude` can read its Keychain token,
+    # and runs missed jobs when the Mac wakes up.
+    mkdir -p "$(dirname "$PLIST")"
+    cat >"$PLIST" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+  <key>Label</key><string>$LABEL</string>
+  <key>ProgramArguments</key><array><string>$SELF</string><string>$cmd</string></array>
+  <key>EnvironmentVariables</key><dict>
+    <key>PATH</key><string>$PATH</string>
+    <key>LK_TOOLS</key><string>$TOOLS</string>
+    <key>LK_MSG</key><string>$MSG</string>
+    <key>CODEX_BIN</key><string>$CODEX</string>
+  </dict>
+  $xml
+  <key>StandardOutPath</key><string>/dev/null</string>
+  <key>StandardErrorPath</key><string>$STATE/log</string>
+</dict></plist>
+EOF
+    launchctl bootstrap "gui/$(id -u)" "$PLIST"
+  else
+    local env="PATH='$PATH' LK_TOOLS='$TOOLS' LK_MSG='$MSG' CODEX_BIN='$CODEX'" line
+    { crontab -l 2>/dev/null; for line in "$@"; do echo "$line $env '$SELF' $cmd # $LABEL"; done; } | crontab -
+  fi
+  echo "installed: $cmd for [$TOOLS]. Log: $STATE/log"
+}
+
+stop() {
+  if [ "$(uname)" = Darwin ]; then
+    launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null; rm -f "$PLIST"
+  else
+    crontab -l 2>/dev/null | grep -v "# $LABEL\$" | crontab -
+  fi
+  echo stopped
+}
+
+schedule() {
+  [ $# -gt 0 ] || { echo "usage: limitkiller schedule HH:MM [HH:MM...]"; exit 1; }
+  local xml="<key>StartCalendarInterval</key><array>" cron=() t h m
+  for t in "$@"; do
+    [[ $t =~ ^([01]?[0-9]|2[0-3]):([0-5][0-9])$ ]] || { echo "bad time: $t (want HH:MM)"; exit 1; }
+    h=$((10#${BASH_REMATCH[1]})) m=$((10#${BASH_REMATCH[2]}))
+    xml+="<dict><key>Hour</key><integer>$h</integer><key>Minute</key><integer>$m</integer></dict>"
+    cron+=("$m $h * * *")
+  done
+  install ping "$xml</array>" "${cron[@]}"
+}
+
+status() {
+  local t
+  for t in $TOOLS; do echo "$t: window resets $(fmt "$(reset_at "$t")")"; done
+  if [ "$(uname)" = Darwin ]; then
+    [ -f "$PLIST" ] && echo "job: $(grep -o '<string>[a-z]*</string></array>' "$PLIST" | sed 's/<[^>]*>//g')" || echo "job: none"
+  else
+    crontab -l 2>/dev/null | grep "# $LABEL\$" || echo "job: none"
+  fi
+}
+
+case "${1:-}" in
+  ping) shift; ping "$@" ;;
+  tick) tick ;;
+  schedule) shift; schedule "$@" ;;
+  watch) install tick "<key>StartInterval</key><integer>300</integer><key>RunAtLoad</key><true/>" "*/5 * * * *" ;;
+  status) status ;;
+  stop) stop ;;
+  *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//' ;;
+esac
