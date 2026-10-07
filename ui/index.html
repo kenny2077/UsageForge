@@ -111,33 +111,54 @@ main { padding: 28px var(--gutter) 64px; }
 .mode[aria-checked="true"] { background: rgba(79, 227, 208, 0.1); box-shadow: inset 0 0 0 2px var(--aurora); }
 .mode:focus-visible { clip-path: none; }
 
-/* The day, drawn: one bar for 24 hours, windows as bands, pings as pins. */
-.day { position: relative; margin-top: 30px; }
-.bar { position: relative; height: 46px; cursor: copy; background: repeating-linear-gradient(90deg, rgba(150, 205, 245, 0.06) 0 calc(100% / 24 - 2px), transparent 0 calc(100% / 24)); box-shadow: inset 0 0 0 1px var(--line); }
-.bar.ro { cursor: default; }
-.band { position: absolute; top: 6px; bottom: 6px; display: flex; align-items: center; padding: 0 8px; overflow: hidden; white-space: nowrap; font: 600 11.5px/1 var(--mono); color: var(--night); background: linear-gradient(90deg, var(--aurora), color-mix(in srgb, var(--aurora) 70%, transparent)); }
-.band.ghost { background: rgba(79, 227, 208, 0.18); color: var(--aurora-hi); }
-.pin { position: absolute; top: -26px; bottom: 0; width: 2px; margin-left: -1px; background: var(--amber); pointer-events: none; }
-.pin span { position: absolute; top: 0; left: 50%; transform: translateX(-50%); padding: 3px 6px; white-space: nowrap; font: 600 11px/1 var(--mono); color: var(--night); background: var(--amber); }
-.nowline { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--ink); opacity: 0.85; pointer-events: none; }
-.nowline::after { content: "now"; position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%); font: 500 10.5px/1 var(--mono); color: var(--ink-2); }
-.ticks { display: flex; justify-content: space-between; margin-top: 22px; color: var(--faint); font: 500 11px/1 var(--mono); }
-.tip { margin-top: 10px; color: var(--faint); font-size: 12.5px; }
-
-.list { display: grid; gap: 8px; margin-top: 18px; }
-.item { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: rgba(234, 242, 248, 0.04); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer); }
-.item .t { font: 700 15px/1 var(--mono); color: var(--amber); min-width: 76px; }
-.item .w { flex: 1; color: var(--muted); font-size: 13.5px; }
-.item button { border: 0; background: none; color: var(--faint); cursor: pointer; font-size: 13px; padding: 4px 6px; }
-.item button:hover { color: var(--rose); }
-.adder { display: flex; gap: 8px; margin-top: 10px; }
+/* The day, drawn: one bar for 24 hours. Windows are blocks you can add, drag and remove. */
+.day { position: relative; margin-top: 8px; user-select: none; -webkit-user-select: none; }
+.zones { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 6px; color: var(--faint); font: 500 11px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.zones span { padding-left: 6px; border-left: 1px solid var(--line); }
+.bar {
+  position: relative; height: 78px; cursor: pointer;
+  background:
+    linear-gradient(90deg, rgba(2, 6, 14, 0.55) 0 25%, transparent 25% 87.5%, rgba(2, 6, 14, 0.35) 87.5%),
+    repeating-linear-gradient(90deg, rgba(150, 205, 245, 0.05) 0 calc(100% / 24 - 1px), rgba(150, 205, 245, 0.12) 0 calc(100% / 24));
+  box-shadow: inset 0 0 0 1px var(--line-2);
+}
+.bar.ro, .bar.ro .band { cursor: default; }
+.bar.watch { background: repeating-linear-gradient(90deg, rgba(150, 205, 245, 0.05) 0 calc(100% / 24 - 1px), rgba(150, 205, 245, 0.12) 0 calc(100% / 24)); }
+.bar:not(.ro):hover { box-shadow: inset 0 0 0 1px var(--aurora); }
+.ghosthour { position: absolute; top: 0; bottom: 0; width: calc(100% / 24); background: rgba(79, 227, 208, 0.12); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
+.bar:not(.ro):hover .ghosthour { opacity: 1; }
+.band {
+  position: absolute; top: 10px; bottom: 10px; display: flex; flex-direction: column; justify-content: center; gap: 4px;
+  padding: 0 26px 0 12px; overflow: hidden; white-space: nowrap; cursor: grab; touch-action: none;
+  color: var(--night); background: linear-gradient(90deg, var(--aurora), color-mix(in srgb, var(--aurora) 72%, transparent));
+  box-shadow: inset 3px 0 0 var(--amber);
+}
+.band b { font: 700 14px/1 var(--mono); }
+.band span { font: 500 11.5px/1 var(--mono); opacity: 0.75; }
+.band.dragging { cursor: grabbing; opacity: 0.85; outline: 2px solid var(--amber); }
+.band.bad { background: rgba(255, 111, 125, 0.5); }
+.band.ghost { background: rgba(79, 227, 208, 0.16); color: var(--aurora-hi); box-shadow: none; cursor: default; }
+.band .x { position: absolute; top: 6px; right: 6px; width: 18px; height: 18px; border: 0; padding: 0; cursor: pointer; font: 600 13px/18px var(--sans); color: var(--night); background: rgba(5, 12, 26, 0.18); }
+.band .x:hover { background: rgba(5, 12, 26, 0.4); }
+.nowline { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--amber); pointer-events: none; }
+.nowline span { position: absolute; bottom: 4px; left: 5px; padding: 2px 5px; font: 600 10px/1 var(--mono); letter-spacing: 0.08em; color: var(--night); background: var(--amber); text-transform: uppercase; }
+.empty-bar { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-2); font-size: 14px; pointer-events: none; }
+.ticks { position: relative; height: 14px; margin-top: 8px; color: var(--faint); font: 500 11px/1 var(--mono); }
+.ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.ticks span:first-child { transform: none; } .ticks span:last-child { transform: translateX(-100%); }
+.tip { margin-top: 12px; color: var(--muted); font-size: 13.5px; }
+.tip b { color: var(--ink); font-weight: 600; }
+.exact { border: 0; padding: 0; background: none; cursor: pointer; color: var(--aurora); font-size: 13.5px; }
+.exact:hover { color: var(--aurora-hi); }
+.adder { display: inline-flex; gap: 8px; vertical-align: middle; }
 input[type="time"], input[type="text"], textarea { padding: 9px 11px; background: var(--night); border: 0; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink); clip-path: var(--chamfer); }
 input[type="time"] { font-family: var(--mono); color-scheme: dark; }
 textarea { width: 100%; min-height: 64px; resize: vertical; line-height: 1.5; }
 input::placeholder, textarea::placeholder { color: var(--faint); }
 
-.repeat { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 20px; }
+.repeat { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; margin-top: 18px; }
 .repeat > span { color: var(--ink-2); font-size: 14px; }
+.extra { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
 .days { display: flex; gap: 5px; }
 .days button, .presets button { border: 0; cursor: pointer; font: 600 12px/1 var(--mono); clip-path: var(--chamfer); transition: background 0.2s, color 0.2s; }
 .days button { width: 38px; padding: 9px 0; color: var(--muted); background: rgba(150, 205, 245, 0.07); }
@@ -146,8 +167,6 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .presets button { padding: 9px 10px; color: var(--muted); background: none; box-shadow: inset 0 0 0 1px var(--line); }
 .presets button:hover { color: var(--ink); }
 
-.chain { margin-top: 4px; color: var(--ink-2); font-size: 14px; }
-.chain b { color: var(--amber); font-weight: 600; }
 
 /* Advanced */
 details.adv summary { cursor: pointer; list-style: none; display: flex; justify-content: space-between; color: var(--ink-2); font-size: 14px; }
@@ -211,7 +230,8 @@ details.adv[open] summary::after { content: "−"; }
   .modes { grid-template-columns: 1fr; }
   .meter { grid-template-columns: 1fr auto; } .meter .lamps { grid-column: 1 / -1; grid-row: 2; }
   .two { grid-template-columns: 1fr; }
-  .band { font-size: 0; padding: 0; }
+  .band { padding: 0 22px 0 6px; } .band span { display: none; } .band b { font-size: 12px; }
+  .ticks span:nth-child(even) { display: none; }
   .activity .bar2 { flex-wrap: wrap; } .activity .synced { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -271,17 +291,13 @@ details.adv[open] summary::after { content: "−"; }
     <div class="sec plan">
       <p class="q plan-q"></p>
       <div class="day">
+        <div class="zones"><span>Night</span><span>Morning</span><span>Afternoon</span><span>Evening</span></div>
         <div class="bar"></div>
         <div class="ticks"></div>
       </div>
       <p class="tip"></p>
 
       <div class="when">
-        <div class="list"></div>
-        <div class="adder">
-          <input type="time" class="new-time" value="06:00" aria-label="Time to add">
-          <button type="button" class="btn ghost add-time">Add time</button>
-        </div>
         <div class="repeat">
           <span>Repeat on</span>
           <div class="days" role="group" aria-label="Days"></div>
@@ -291,8 +307,14 @@ details.adv[open] summary::after { content: "−"; }
             <button type="button" data-p="0,6">Weekends</button>
           </div>
         </div>
+        <div class="extra">
+          <button type="button" class="exact">+ Add an exact time</button>
+          <span class="adder hidden">
+            <input type="time" class="new-time" value="06:00" aria-label="Time to add">
+            <button type="button" class="btn ghost add-time">Add</button>
+          </span>
+        </div>
       </div>
-      <p class="chain hidden"></p>
     </div>
 
     <div class="sec">
@@ -399,36 +421,58 @@ function daysText(days) {
 }
 
 // ---------- The 24-hour bar ----------
-// origin: the minute of day at the bar's left edge (midnight for set times, "now" for back to back).
-function drawDay(node, windows, pins, readOnly, origin = 0) {
+const wrap = (m) => ((m % 1440) + 1440) % 1440;
+// The time in `times` (other than `skip`) whose window overlaps one starting at minute m, if any.
+function clash(times, m, skip) {
+  return times.find((t) => t !== skip && (wrap(m - mins(t)) < WINDOW || wrap(mins(t) - m) < WINDOW));
+}
+
+// items: [{start, len, title, sub, ghost, t}]. origin: minute of day at the left edge
+// (midnight for set times, "now" for back to back).
+function drawDay(node, items, { origin = 0, editable = false } = {}) {
   const bar = node.querySelector(".bar");
   bar.innerHTML = "";
-  bar.classList.toggle("ro", readOnly);
-  const pct = (m) => `${((((m - origin) % 1440) + 1440) % 1440 / 1440) * 100}%`;
-  for (const [start0, label, ghost] of windows) {
-    const start = (((start0 - origin) % 1440) + 1440) % 1440 + origin;
-    // A window that crosses midnight is drawn in two pieces.
-    const len = ghost ? label.len : WINDOW;
-    const end = origin + 1440;
-    for (const [a, b] of start + len > end ? (origin ? [[start, end]] : [[start, end], [origin, start + len - 1440]]) : [[start, start + len]]) {
+  bar.classList.toggle("ro", !editable);
+  bar.classList.toggle("watch", origin !== 0);
+  node.querySelector(".zones").classList.toggle("hidden", origin !== 0);
+  const left = (m) => `${(wrap(m - origin) / 1440) * 100}%`;
+  for (const it of items) {
+    const start = wrap(it.start - origin);
+    // A window that runs past the right edge continues at the left (midnight) or is cut (next 24 hours).
+    const pieces = start + it.len > 1440 ? (origin ? [[start, 1440]] : [[start, 1440], [0, start + it.len - 1440]]) : [[start, start + it.len]];
+    for (const [a, b] of pieces) {
       const band = document.createElement("div");
-      band.className = "band" + (ghost ? " ghost" : "");
-      band.style.left = pct(a); band.style.width = `${((b - a) / 1440) * 100}%`;
-      if (a === start) band.textContent = ghost ? label.text : label;
+      band.className = "band" + (it.ghost ? " ghost" : "");
+      band.style.left = `${(a / 1440) * 100}%`; band.style.width = `${((b - a) / 1440) * 100}%`;
+      if (it.t) band.dataset.t = it.t;
+      if (a === start) {
+        const t = document.createElement("b"); t.textContent = it.title;
+        const sub = document.createElement("span"); sub.textContent = it.sub || "";
+        band.append(t, sub);
+        if (editable) {
+          const x = document.createElement("button"); x.type = "button"; x.className = "x"; x.textContent = "×";
+          x.setAttribute("aria-label", `Remove ${it.title}`); band.append(x);
+          band.title = "Drag to move";
+        }
+      }
       bar.append(band);
     }
   }
-  for (const m of pins) {
-    const pin = document.createElement("div"); pin.className = "pin"; pin.style.left = pct(m);
-    const tag = document.createElement("span"); tag.textContent = clock(m); pin.append(tag); bar.append(pin);
+  if (!items.length && editable) {
+    const e = document.createElement("div"); e.className = "empty-bar"; e.textContent = "Click the hour you want your first window to start"; bar.append(e);
   }
-  if (!origin) { const now = document.createElement("div"); now.className = "nowline"; now.style.left = pct(nowMins()); bar.append(now); }
+  if (!origin) {
+    const now = document.createElement("div"); now.className = "nowline"; now.style.left = left(nowMins());
+    const tag = document.createElement("span"); tag.textContent = "now"; now.append(tag); bar.append(now);
+  }
+  if (editable) { const g = document.createElement("div"); g.className = "ghosthour"; bar.append(g); }
   const ticks = node.querySelector(".ticks");
   ticks.innerHTML = "";
-  for (const k of [0, 360, 720, 1080, 1440]) {
-    const s = document.createElement("span");
-    s.textContent = origin && k === 0 ? "Now" : clock(origin + k).replace(":00", "");
-    ticks.append(s);
+  for (let k = 0; k <= 1440; k += 180) {
+    const span = document.createElement("span");
+    span.style.left = `${(k / 1440) * 100}%`;
+    span.textContent = origin && k === 0 ? "Now" : clock(origin + k).replace(":00", "");
+    ticks.append(span);
   }
 }
 
@@ -461,26 +505,70 @@ function build() {
     const addTime = (t) => {
       const c = config[tool];
       if (c.times.includes(t)) return toast(`${clock(mins(t))} is already set`);
+      const hit = clash(c.times, mins(t));
+      if (hit) return toast(`${clock(mins(t))} is inside your ${clock(mins(hit))} window. Try ${clock(mins(hit) + WINDOW)} or later.`, true);
       if (c.times.length >= 12) return toast("Up to 12 times", true);
       c.times = [...c.times, t].sort((a, b) => mins(a) - mins(b));
       renderTool(tool); save();
     };
+    q(".exact").addEventListener("click", () => { q(".adder").classList.toggle("hidden"); q(".new-time").focus(); });
     q(".add-time").addEventListener("click", () => {
       const t = q(".new-time").value;
       if (!/^\d\d:\d\d$/.test(t)) return toast("Pick a time first", true);
       addTime(t);
     });
-    // Tap the bar to add a time at that hour.
-    q(".bar").addEventListener("click", (e) => {
-      if (config[tool].mode !== "schedule") return;
-      const r = e.currentTarget.getBoundingClientRect();
-      const hour = Math.min(23, Math.floor(((e.clientX - r.left) / r.width) * 24));
-      addTime(`${pad(hour)}:00`);
+
+    // The bar is the editor: click an empty hour to add, drag a window to move it, × to remove.
+    const bar = q(".bar");
+    const hourAt = (x) => { const r = bar.getBoundingClientRect(); return Math.max(0, Math.min(23, Math.floor(((x - r.left) / r.width) * 24))); };
+    let drag = null;
+    bar.addEventListener("pointermove", (e) => {
+      const g = bar.querySelector(".ghosthour");
+      if (g && !drag) g.style.left = `${(hourAt(e.clientX) / 24) * 100}%`;
+      if (!drag) return;
+      const r = bar.getBoundingClientRect();
+      const delta = Math.round((((e.clientX - drag.x) / r.width) * 1440) / 15) * 15;
+      drag.to = wrap(mins(drag.t) + delta);
+      drag.moved = drag.moved || Math.abs(e.clientX - drag.x) > 4;
+      const bad = !!clash(config[tool].times, drag.to, drag.t);
+      for (const b of drag.bands) {
+        b.classList.add("dragging"); b.classList.toggle("bad", bad);
+        b.style.transform = `translateX(${(delta / 1440) * r.width}px)`;
+      }
+      const label = drag.bands[0].querySelector("b"); if (label) label.textContent = clock(drag.to);
     });
-    q(".list").addEventListener("click", (e) => {
-      const b = e.target.closest("button[data-t]"); if (!b) return;
-      config[tool].times = config[tool].times.filter((t) => t !== b.dataset.t);
+    bar.addEventListener("pointerdown", (e) => {
+      const band = e.target.closest(".band[data-t]");
+      if (!band || e.target.closest(".x") || config[tool].mode !== "schedule") return;
+      drag = { t: band.dataset.t, x: e.clientX, to: mins(band.dataset.t), moved: false, bands: [...bar.querySelectorAll(`.band[data-t="${band.dataset.t}"]`)] };
+      bar.setPointerCapture(e.pointerId);
+    });
+    const endDrag = () => {
+      if (!drag) return;
+      const d = drag; drag = null;
+      if (!d.moved) return renderTool(tool);
+      const c = config[tool];
+      const hit = clash(c.times, d.to, d.t);
+      const to = hhmm(d.to);
+      if (hit) { toast(`That overlaps your ${clock(mins(hit))} window`, true); return renderTool(tool); }
+      if (to === d.t) return renderTool(tool);
+      c.times = c.times.map((t) => (t === d.t ? to : t)).sort((a, b) => mins(a) - mins(b));
+      bar.dataset.justDragged = "1";
       renderTool(tool); save();
+    };
+    bar.addEventListener("pointerup", endDrag);
+    bar.addEventListener("pointercancel", endDrag);
+    bar.addEventListener("click", (e) => {
+      if (bar.dataset.justDragged) { delete bar.dataset.justDragged; return; }
+      if (config[tool].mode !== "schedule") return;
+      const x = e.target.closest(".x");
+      if (x) {
+        const t = x.closest(".band").dataset.t;
+        config[tool].times = config[tool].times.filter((v) => v !== t);
+        return renderTool(tool), save();
+      }
+      if (e.target.closest(".band")) return;
+      addTime(`${pad(hourAt(e.clientX))}:00`);
     });
     q(".days").addEventListener("click", (e) => {
       const b = e.target.closest("button"); if (!b) return;
@@ -532,34 +620,29 @@ function renderTool(tool) {
   // The plan: what the day looks like in this mode.
   q(".plan").classList.toggle("hidden", c.mode === "off");
   q(".when").classList.toggle("hidden", c.mode !== "schedule");
-  q(".chain").classList.toggle("hidden", c.mode !== "watch");
+  const next = c.mode === "schedule" ? nextScheduled(c) : null;
+  const tip = q(".tip"); tip.innerHTML = "";
   if (c.mode === "schedule") {
-    q(".plan-q").textContent = c.times.length ? `Your day: ${c.times.length === 1 ? "one window" : c.times.length + " windows"} ${daysText(c.days)}` : "Pick the times to start a window";
-    q(".tip").textContent = "Tap the bar to add a time at that hour. Each message opens a 5-hour window.";
-    drawDay(node, c.times.map((t) => [mins(t), `until ${clock(mins(t) + WINDOW)}`, false]), c.times.map(mins), false);
-    const list = q(".list"); list.innerHTML = "";
-    for (const t of c.times) {
-      const row = document.createElement("div"); row.className = "item";
-      const a = document.createElement("span"); a.className = "t"; a.textContent = clock(mins(t));
-      const w = document.createElement("span"); w.className = "w"; w.textContent = `window open until ${clock(mins(t) + WINDOW)}`;
-      const x = document.createElement("button"); x.type = "button"; x.dataset.t = t; x.textContent = "Remove";
-      row.append(a, w, x); list.append(row);
-    }
+    q(".plan-q").textContent = c.times.length ? `Your day: ${c.times.length === 1 ? "one window" : c.times.length + " windows"}, ${daysText(c.days)}` : "When should your windows start?";
+    drawDay(node, c.times.map((t) => ({ start: mins(t), len: WINDOW, title: clock(mins(t)), sub: `to ${clock(mins(t) + WINDOW)}`, t })), { editable: true });
+    tip.append(c.times.length
+      ? "Click an empty hour to add a window. Drag one to move it, × to remove it."
+      : "Each message starts a 5-hour window. Click the timeline to add one.");
+    if (next) tip.append(" Next: ", Object.assign(document.createElement("b"), { textContent: when(next) }), ".");
     for (const b of q(".days").children) b.setAttribute("aria-pressed", String(c.days.includes(Number(b.dataset.v))));
   }
   if (c.mode === "watch") {
     // The next 24 hours from now: the window that's open, then one after another.
     const origin = nowMins();
     const r = new Date(s.reset * 1000);
-    const first = open ? origin + (((r.getHours() * 60 + r.getMinutes() - origin) % 1440) + 1440) % 1440 : origin;
-    const windows = [], pins = [];
-    if (open) windows.push([origin, { text: "open now", len: first - origin }, true]);
-    for (let m = first; m < origin + 1440; m += WINDOW) { windows.push([m, `from ${clock(m)}`, false]); pins.push(m); }
+    const first = open ? origin + wrap(r.getHours() * 60 + r.getMinutes() - origin) : origin;
+    const items = [];
+    if (open) items.push({ start: origin, len: first - origin, title: "Open now", sub: "", ghost: true });
+    for (let m = first; m < origin + 1440; m += WINDOW) items.push({ start: m, len: WINDOW, title: clock(m), sub: `to ${clock(m + WINDOW)}` });
     q(".plan-q").textContent = "Your next 24 hours: a new window as soon as each one ends";
-    q(".tip").textContent = "UsageForge checks every 5 minutes, all week.";
-    drawDay(node, windows, pins, true, origin);
-    q(".chain").innerHTML = "";
-    q(".chain").append("Next new window starts at ", Object.assign(document.createElement("b"), { textContent: open ? when(s.reset) : "the next check" }), ".");
+    drawDay(node, items, { origin });
+    tip.append("UsageForge checks every 5 minutes, all week. Next: ",
+      Object.assign(document.createElement("b"), { textContent: open ? when(s.reset) : "within 5 minutes" }), ".");
   }
 
   if (document.activeElement !== q(".prompt")) q(".prompt").value = c.prompt || "";
