@@ -1036,7 +1036,7 @@ pre {
 /* Top-align the forge index with the headline, not the bottom of the copy. */
 .hero-inner .lab-index {
   align-self: start;
-  margin-top: 6px;
+  margin-top: 40px;
 }
 
 /* Install command: one line, copyable. */
