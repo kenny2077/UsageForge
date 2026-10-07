@@ -1,0 +1,308 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LimitKiller</title>
+<meta name="description" content="Start your Claude Code and Codex 5-hour usage window on your schedule. One bash script, no daemon, no stored credentials.">
+<meta name="theme-color" content="#050c1a">
+<meta name="color-scheme" content="dark">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Instrument+Sans:wght@400..700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --deep:#02060e;--night:#050c1a;--night-2:#0a1426;--night-3:#111e36;
+  --ink:#eaf2f8;--ink-2:#c8d6e4;--muted:#93a7bb;--faint:#62778d;
+  --line:rgba(150,205,245,.14);--line-2:rgba(150,205,245,.28);
+  --aurora:#4fe3d0;--aurora-hi:#8cf2e6;--amber:#ffb547;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+  --gutter:max(clamp(16px,5vw,72px),calc((100% - 1240px)/2));
+  --ease:cubic-bezier(.16,1,.3,1);
+  --chamfer:polygon(8px 0,calc(100% - 8px) 0,100% 8px,100% calc(100% - 8px),calc(100% - 8px) 100%,8px 100%,0 calc(100% - 8px),0 8px);
+  --cell:12px;--seam:3px;--seam-color:rgba(2,6,14,.55);
+}
+*{box-sizing:border-box;margin:0}
+html{background:var(--deep);scroll-behavior:smooth}
+body{background:var(--deep);color:var(--ink);font:400 17px/1.6 "Instrument Sans",system-ui,sans-serif;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+::selection{background:var(--aurora);color:var(--night)}
+a{color:inherit;text-decoration:none}
+h1,h2,h3{font-family:Archivo,system-ui,sans-serif;font-weight:800;font-stretch:72%;line-height:.92;letter-spacing:-.01em;text-wrap:balance}
+:focus-visible{outline:2px solid var(--amber);outline-offset:3px}
+
+.page{background:var(--night);position:relative;z-index:1;box-shadow:0 30px 60px -20px rgba(0,0,0,.7)}
+section{padding:clamp(88px,14vh,160px) var(--gutter)}
+
+/* nav */
+nav{position:fixed;inset:0 0 auto;z-index:10;height:68px;display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:0 var(--gutter);transition:background .3s}
+nav.scrolled{background:rgba(5,12,26,.8);backdrop-filter:blur(14px) saturate(1.2);-webkit-backdrop-filter:blur(14px) saturate(1.2);box-shadow:inset 0 -1px 0 var(--line)}
+.brand{display:flex;align-items:center;gap:12px;font:700 20px Archivo,sans-serif;font-stretch:85%}
+.mark{width:44px;height:24px;display:grid;grid-template-columns:repeat(11,1fr);gap:1px}
+.mark i{background:var(--aurora);opacity:.15}
+.mark i.on{opacity:1;box-shadow:0 0 6px var(--aurora)}
+.links{display:flex;gap:4px}
+.links a{font-size:14.5px;color:var(--muted);padding:8px 14px;clip-path:var(--chamfer);transition:background .2s,color .2s}
+.links a:hover{background:rgba(79,227,208,.1);color:var(--ink)}
+nav .btn{justify-self:end}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:8px;min-height:48px;padding:14px 22px;font:600 13px var(--mono);letter-spacing:.1em;text-transform:uppercase;clip-path:var(--chamfer);background:var(--aurora);color:var(--night);border:0;cursor:pointer;transition:background .2s var(--ease),transform .1s}
+.btn:hover{background:var(--aurora-hi)}
+.btn:active{transform:translateY(1px) scale(.99)}
+.btn:focus-visible{clip-path:none}
+.btn.ghost{background:rgba(234,242,248,.06);color:var(--ink);box-shadow:inset 0 0 0 1px var(--line-2)}
+.btn.ghost:hover{background:rgba(234,242,248,.12)}
+nav .btn{min-height:40px;padding:10px 18px}
+
+/* labels */
+.kicker{display:flex;align-items:center;gap:10px;font:500 12.5px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--aurora)}
+.kicker::before{content:"";width:8px;height:8px;background:var(--aurora);box-shadow:12px 0 0 rgba(79,227,208,.35);margin-right:14px}
+.status{display:inline-flex;align-items:center;gap:10px;font:500 12.5px var(--mono);letter-spacing:.06em;color:var(--ink-2)}
+.status::before{content:"";width:8px;height:8px;background:var(--amber);box-shadow:0 0 12px rgba(255,181,71,.7)}
+
+/* hero */
+.hero{min-height:100svh;display:grid;grid-template-columns:1fr 400px;gap:48px;align-items:end;padding:140px var(--gutter) clamp(64px,10vh,120px);
+  background:
+    repeating-linear-gradient(90deg,transparent 0 calc(var(--cell) - var(--seam)),var(--seam-color) 0 var(--cell)),
+    repeating-linear-gradient(0deg,transparent 0 calc(var(--cell) - var(--seam)),var(--seam-color) 0 var(--cell)),
+    radial-gradient(70% 45% at 72% 26%,rgba(76,201,240,.34),transparent 70%),
+    radial-gradient(55% 40% at 30% 18%,rgba(79,227,208,.28),transparent 70%),
+    radial-gradient(40% 30% at 88% 10%,rgba(155,125,255,.22),transparent 70%),
+    linear-gradient(180deg,#030814,#0a1730 60%,var(--night))}
+.hero > *{min-width:0}
+.hero h1{font-size:clamp(54px,8.2vw,132px);max-width:13ch;margin:22px 0 26px}
+.hero h1 em{font-style:normal;color:var(--aurora)}
+.lede{font-size:clamp(17px,1.5vw,20px);color:var(--ink-2);max-width:54ch}
+.ctas{display:flex;flex-wrap:wrap;gap:12px;margin:32px 0 28px}
+
+.install{display:flex;align-items:center;gap:12px;max-width:640px;background:rgba(10,20,38,.85);box-shadow:inset 0 0 0 1px var(--line);padding:6px 6px 6px 18px;font:14px var(--mono)}
+.install code{flex:1;overflow-x:auto;white-space:nowrap;color:var(--ink);scrollbar-width:none}
+.install code::before{content:"$ ";color:var(--faint)}
+.copy{font:600 12px var(--mono);letter-spacing:.1em;text-transform:uppercase;padding:10px 14px;clip-path:var(--chamfer);background:rgba(234,242,248,.08);color:var(--ink);border:0;cursor:pointer}
+.copy.done{color:var(--amber)}
+
+.panel{background:rgba(5,12,26,.72);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:inset 0 0 0 1px var(--line);font:13px/1.75 var(--mono);color:var(--ink-2);clip-path:polygon(18px 0,100% 0,100% calc(100% - 18px),calc(100% - 18px) 100%,0 100%,0 18px)}
+.panel header{display:flex;justify-content:space-between;padding:12px 18px;box-shadow:inset 0 -1px 0 var(--line);color:var(--faint);font-size:11.5px;letter-spacing:.14em;text-transform:uppercase}
+.panel pre{padding:16px 18px 20px;white-space:pre-wrap;font:inherit}
+.p{color:var(--faint)}.ok{color:var(--aurora)}.am{color:var(--amber)}
+
+/* statement + timeline */
+.statement p{font:800 clamp(34px,5vw,84px)/.98 Archivo,sans-serif;font-stretch:74%;max-width:20ch;letter-spacing:-.01em}
+.statement p span{color:rgba(234,242,248,.28)}
+.statement p b{color:var(--amber);font-weight:inherit}
+.timeline{margin-top:clamp(48px,8vh,88px);display:grid;gap:22px;max-width:980px}
+.row{display:grid;grid-template-columns:150px 1fr;gap:20px;align-items:center}
+.row > span{font:500 12px var(--mono);letter-spacing:.12em;text-transform:uppercase;color:var(--faint)}
+.track{position:relative;height:40px;box-shadow:inset 0 0 0 1px var(--line);background:repeating-linear-gradient(90deg,transparent 0 calc(100%/18 - 1px),var(--line) 0 calc(100%/18))}
+.win{position:absolute;top:6px;bottom:6px;display:flex;align-items:center;padding:0 10px;font:600 11px var(--mono);letter-spacing:.06em;color:var(--night);background:var(--aurora);white-space:nowrap;overflow:hidden}
+.win.wait{background:rgba(255,181,71,.16);color:var(--amber);box-shadow:inset 0 0 0 1px rgba(255,181,71,.5)}
+.win.idle{background:rgba(79,227,208,.18);color:var(--aurora-hi)}
+.axis{display:flex;justify-content:space-between;margin-left:170px;font:11px var(--mono);color:var(--faint)}
+
+/* features */
+.head{margin-bottom:clamp(48px,8vh,88px)}
+.head h2{font-size:clamp(46px,6.4vw,100px);margin:20px 0 22px}
+.head p{font-size:18px;color:var(--muted);max-width:54ch}
+.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.card{position:relative;padding:32px 28px 34px;background:linear-gradient(160deg,var(--night-3),var(--night-2) 55%);box-shadow:inset 0 0 0 1px var(--line);clip-path:polygon(18px 0,100% 0,100% calc(100% - 18px),calc(100% - 18px) 100%,0 100%,0 18px)}
+.card::before{content:"";position:absolute;inset:0 0 auto;height:2px;opacity:.8;background:linear-gradient(90deg,transparent,var(--tint,#58f0a8) 30%,var(--aurora) 70%,transparent)}
+.card::after{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s;background:radial-gradient(260px circle at var(--mx,50%) var(--my,50%),rgba(79,227,208,.08),transparent 70%)}
+.card:hover::after{opacity:1}
+.num{font:600 13px var(--mono);color:var(--amber);letter-spacing:.06em}
+.card h3{font-size:clamp(30px,2.6vw,40px);margin:18px 0 12px}
+.card p{color:var(--muted);font-size:16px}
+.card code,.faq code{font:14px var(--mono);color:var(--aurora-hi)}
+
+/* steps */
+.steps{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:20px}
+.step{padding-top:22px;box-shadow:inset 0 1px 0 var(--line-2)}
+.step .num{font-size:12.5px}
+.step h3{font-size:clamp(28px,2.4vw,36px);margin:14px 0 10px}
+.step p{color:var(--muted);font-size:16px;margin-bottom:16px}
+.step pre{font:13.5px/1.7 var(--mono);color:var(--ink-2);background:var(--night-2);box-shadow:inset 0 0 0 1px var(--line);padding:14px 16px;overflow-x:auto}
+
+/* faq */
+.faq{max-width:880px}
+details{border-top:1px dotted var(--line-2);padding:22px 0}
+details:last-child{border-bottom:1px dotted var(--line-2)}
+summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;gap:20px;font:700 clamp(22px,2vw,28px)/1.15 Archivo,sans-serif;font-stretch:80%}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"+";font:400 22px var(--mono);color:var(--aurora);transition:transform .3s var(--ease)}
+details[open] summary::after{transform:rotate(45deg)}
+details p{color:var(--muted);margin-top:12px;max-width:68ch}
+
+/* cta + footer */
+.cta{text-align:center;display:grid;justify-items:center;gap:24px}
+.cta h2{font-size:clamp(46px,6.4vw,100px);max-width:14ch}
+footer{position:sticky;bottom:0;background:var(--deep);padding:72px var(--gutter) 32px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:32px;margin-bottom:56px}
+.cols h4{font:500 12px var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-bottom:14px}
+.cols a,.cols p{display:block;color:var(--muted);font-size:15px;margin-bottom:8px}
+.cols a:hover{color:var(--ink)}
+.wordmark{font:900 clamp(56px,15vw,240px)/.8 Archivo,sans-serif;font-stretch:62%;letter-spacing:-.02em;color:transparent;
+  background:radial-gradient(circle,var(--aurora) 1.6px,transparent 2px) 0 0/7px 7px;-webkit-background-clip:text;background-clip:text;opacity:.75}
+.meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-top:28px;font:12px var(--mono);color:var(--faint);letter-spacing:.06em}
+
+@media (max-width:1100px){.hero{grid-template-columns:minmax(0,1fr)}.panel{max-width:520px}}
+@media (max-width:960px){.grid,.steps{grid-template-columns:repeat(2,minmax(0,1fr))}.links{display:none}nav{grid-template-columns:1fr auto}}
+@media (max-width:640px){
+  nav{height:60px}.grid,.steps{grid-template-columns:1fr}
+  .row{grid-template-columns:1fr;gap:8px}.axis{margin-left:0}.win{font-size:0;padding:0}
+  .install{flex-wrap:wrap;padding:12px}.install code{flex-basis:100%}
+}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style>
+</head>
+<body>
+<nav id="nav">
+  <a class="brand" href="#top" aria-label="LimitKiller home"><span class="mark" id="mark" aria-hidden="true"></span>LimitKiller</a>
+  <div class="links">
+    <a href="#why">Why</a><a href="#features">Features</a><a href="#how">How it works</a><a href="#faq">FAQ</a>
+    <a href="https://github.com/kenny2077/LimitKiller">GitHub ↗</a>
+  </div>
+  <a class="btn" href="#how">Install</a>
+</nav>
+
+<div class="page" id="top">
+<header class="hero">
+  <div>
+    <span class="status">Free and open source · MIT</span>
+    <h1>Your 5-hour window, <em>on your schedule.</em></h1>
+    <p class="lede">On the $20 Claude Pro and ChatGPT Plus plans, the 5-hour clock starts with your first message. LimitKiller sends that message for you, at 6 a.m. or the minute the last window resets. When you sit down to work, a window is already running and resets sooner.</p>
+    <div class="ctas">
+      <a class="btn" href="#how">Install in a minute</a>
+      <a class="btn ghost" href="https://github.com/kenny2077/LimitKiller">Read the source ↗</a>
+    </div>
+    <div class="install">
+      <code id="cmd">git clone https://github.com/kenny2077/LimitKiller &amp;&amp; LimitKiller/limitkiller watch</code>
+      <button class="copy" data-copy="cmd">Copy</button>
+    </div>
+  </div>
+  <aside class="panel" aria-label="Example terminal session">
+    <header><span>~ terminal</span><span>example</span></header>
+<pre><span class="p">$</span> limitkiller watch
+<span class="ok">installed:</span> tick for [claude codex]
+
+<span class="p">$</span> limitkiller status
+claude: window resets <span class="am">Tue 11:02</span>
+codex: window resets <span class="am">Tue 11:03</span>
+job: watch
+
+<span class="p"># 06:02</span>  pinged claude
+<span class="p"># 06:03</span>  pinged codex
+<span class="p"># 11:02</span>  pinged claude
+<span class="p"># 11:03</span>  pinged codex</pre>
+  </aside>
+</header>
+
+<section class="statement" id="why">
+  <span class="kicker">Why</span>
+  <p style="margin-top:28px"><span>The cap isn't the problem.</span> The clock is. <span>Start at 9:00, run out by 10:40, and you wait until 2:00. With a 6:00 ping, the window</span> <b>resets at 11:00,</b> <span>while you're still at your desk.</span></p>
+  <div class="timeline" aria-label="Same day with and without LimitKiller">
+    <div class="row"><span>Without</span>
+      <div class="track">
+        <div class="win" style="left:16.67%;width:9.26%">you</div>
+        <div class="win wait" style="left:25.93%;width:18.52%">wait → 14:00</div>
+      </div>
+    </div>
+    <div class="row"><span>With LimitKiller</span>
+      <div class="track">
+        <div class="win idle" style="left:0;width:16.67%">06:00 ping</div>
+        <div class="win" style="left:16.67%;width:9.26%">you</div>
+        <div class="win" style="left:27.78%;width:27.78%">11:00 · fresh window</div>
+      </div>
+    </div>
+    <div class="axis" aria-hidden="true"><span>06</span><span>09</span><span>12</span><span>15</span><span>18</span><span>21</span><span>24</span></div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="head">
+    <span class="kicker">Features</span>
+    <h2>Small script. No babysitting.</h2>
+    <p>One bash file you can read in five minutes. No daemon, no account, no copied tokens.</p>
+  </div>
+  <div class="grid">
+    <article class="card" style="--tint:#58f0a8"><span class="num">#1 Schedule</span><h3>Pick your times</h3><p><code>limitkiller schedule 06:00 11:00</code> pings at the times you choose, every day.</p></article>
+    <article class="card" style="--tint:#ffb14a"><span class="num">#2 Watch</span><h3>Back-to-back windows</h3><p>Checks every 5 minutes and starts the next window as soon as the last one resets, all week.</p></article>
+    <article class="card" style="--tint:#6aa7ff"><span class="num">#3 Both</span><h3>Claude Code and Codex</h3><p>Pings whichever of the two you have installed and tracks each tool's window separately.</p></article>
+    <article class="card" style="--tint:#ff6fae"><span class="num">#4 Private</span><h3>No stored credentials</h3><p>Uses your existing <code>claude</code> and <code>codex</code> logins. LimitKiller never copies, exports or uploads a token.</p></article>
+    <article class="card" style="--tint:#b48cff"><span class="num">#5 Light</span><h3>A near-free ping</h3><p>Claude gets one Haiku message with no tools, hooks, plugins or MCP servers. Codex runs read-only. Reset times are read from local logs, which costs no quota.</p></article>
+    <article class="card" style="--tint:#58f0a8"><span class="num">#6 Native</span><h3>launchd and cron</h3><p>Uses the system scheduler. On a Mac, launchd can read your Keychain login and runs missed pings when the Mac wakes.</p></article>
+  </div>
+</section>
+
+<section id="how">
+  <div class="head">
+    <span class="kicker">How it works</span>
+    <h2>Set it up once.</h2>
+    <p>macOS or Linux, bash and <code style="font:15px var(--mono)">jq</code>. Have <code style="font:15px var(--mono)">claude</code> or <code style="font:15px var(--mono)">codex</code> installed and logged in.</p>
+  </div>
+  <div class="steps">
+    <div class="step"><span class="num">01</span><h3>Install</h3><p>Clone the repo and put the script on your PATH.</p>
+<pre>git clone https://github.com/kenny2077/LimitKiller
+ln -s "$PWD/LimitKiller/limitkiller" \
+  ~/.local/bin/limitkiller</pre></div>
+    <div class="step"><span class="num">02</span><h3>Pick a mode</h3><p>Fixed times, or chain every window back to back.</p>
+<pre>limitkiller schedule 06:00 11:00
+<span class="p"># or</span>
+limitkiller watch</pre></div>
+    <div class="step"><span class="num">03</span><h3>Forget it</h3><p>Check on it when you want. Remove it with one command.</p>
+<pre>limitkiller status
+limitkiller stop</pre></div>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="head"><span class="kicker">FAQ</span><h2>Questions.</h2></div>
+  <div class="faq">
+    <details><summary>Does this give me more usage?</summary><p>No. Your caps stay the same. LimitKiller changes <em>when</em> each 5-hour window starts, so a reset lands while you're working instead of while you're asleep.</p></details>
+    <details><summary>How much quota does a ping use?</summary><p>Very little. Claude gets one short Haiku message with tools, hooks, plugins and MCP servers turned off. Codex gets one read-only <code>codex exec</code>. Watch mode sends about 4–5 pings a day per tool, and each one counts toward your weekly cap.</p></details>
+    <details><summary>Does my computer need to be awake?</summary><p>Yes. A sleeping laptop can't send anything. On macOS, launchd runs a missed ping as soon as the Mac wakes. To wake it on a schedule, run <code>sudo pmset repeat wakeorpoweron MTWRFSU 05:58:00</code>.</p></details>
+    <details><summary>Is it allowed?</summary><p>A ping is one ordinary message from your own logged-in client. We found no rule against it, but read Anthropic's and OpenAI's terms yourself. LimitKiller does not rotate accounts or share them.</p></details>
+    <details><summary>What happens when I hit the weekly cap?</summary><p>LimitKiller reads the reset time from the rejected reply (Claude) or the local logs (Codex) and waits until then. It doesn't send pings that can't succeed.</p></details>
+    <details><summary>How do I remove it?</summary><p><code>limitkiller stop</code> removes the launchd or cron job. Then delete the repo and <code>~/.local/state/limitkiller</code>.</p></details>
+  </div>
+</section>
+
+<section class="cta">
+  <span class="kicker">Get started</span>
+  <h2>Start your window at 6:00 instead of when you sit down.</h2>
+  <div class="ctas" style="justify-content:center;margin:8px 0 0">
+    <a class="btn" href="#how">Install</a>
+    <a class="btn ghost" href="https://github.com/kenny2077/LimitKiller">Star on GitHub ↗</a>
+  </div>
+</section>
+</div>
+
+<footer>
+  <div class="cols">
+    <div><h4>LimitKiller</h4><p>Your 5-hour window, on your schedule.</p></div>
+    <div><h4>Project</h4><a href="https://github.com/kenny2077/LimitKiller">Source ↗</a><a href="https://github.com/kenny2077/LimitKiller#readme">Docs ↗</a><a href="https://github.com/kenny2077/LimitKiller/issues">Issues ↗</a></div>
+    <div><h4>Built by</h4><a href="https://auroraforgelab.com/">Aurora Forge Lab ↗</a></div>
+  </div>
+  <div class="wordmark" aria-hidden="true">LIMITKILLER</div>
+  <div class="meta"><span>MIT License</span><span>Not affiliated with Anthropic or OpenAI</span></div>
+</footer>
+
+<script>
+// Pixel brand mark: an hourglass-ish 11x6 lamp pattern.
+const on = new Set([0,1,2,3,4,5,6,7,8,9,10,12,13,14,15,16,17,18,24,25,26,27,28,36,37,38,48,59,60,61,62,63,64,65]);
+document.getElementById('mark').innerHTML = Array.from({length:66}, (_, i) => `<i class="${on.has(i) ? 'on' : ''}"></i>`).join('');
+
+const nav = document.getElementById('nav');
+addEventListener('scroll', () => nav.classList.toggle('scrolled', scrollY > 20), {passive:true});
+
+document.querySelectorAll('[data-copy]').forEach(b => b.addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText(document.getElementById(b.dataset.copy).textContent); b.textContent = 'Copied'; }
+  catch { b.textContent = 'Select & copy'; }
+  b.classList.add('done'); setTimeout(() => { b.textContent = 'Copy'; b.classList.remove('done'); }, 1600);
+}));
+
+document.querySelectorAll('.card').forEach(c => c.addEventListener('pointermove', e => {
+  const r = c.getBoundingClientRect();
+  c.style.setProperty('--mx', e.clientX - r.left + 'px'); c.style.setProperty('--my', e.clientY - r.top + 'px');
+}));
+</script>
+</body>
+</html>
