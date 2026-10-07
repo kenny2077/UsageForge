@@ -17,7 +17,7 @@ git clone https://github.com/kenny2077/UsageForge && cd UsageForge
 ln -s "$PWD/usageforge" ~/.local/bin/usageforge   # any directory on your PATH
 ```
 
-You need `claude` (Claude Code) and/or `codex` (Codex CLI: `npm i -g @openai/codex`) installed and logged in.
+You need `claude` (Claude Code) and/or `codex` installed and logged in. If the ChatGPT desktop app is installed, UsageForge uses the Codex CLI bundled inside it. Otherwise install it with `npm i -g @openai/codex`.
 UsageForge pings whichever of the two it finds.
 
 ## Two modes (pick one; installing a mode replaces the other)
@@ -45,10 +45,11 @@ Installing copies the script into the state directory and runs it from there. ma
 
 ## How it works
 
-- **Ping.** Claude: `claude -p hi --model haiku --tools ""`, run from an empty directory with user settings off.
+- **Ping.** The message is a plain greeting for the time of day ("Good morning", "Good afternoon" or "Good evening").
+  Claude: `claude -p "Good morning" --model haiku --tools "" --safe-mode`, run from an empty directory with user settings off.
   That means no hooks, plugins, MCP or CLAUDE.md get loaded, so the ping uses very little quota.
-  Codex: `codex exec --sandbox read-only -c model_reasoning_effort=low hi`.
-  It still loads your `~/.codex/config.toml`, including any MCP servers listed there.
+  Codex: `codex exec --sandbox read-only --ignore-user-config -c model_reasoning_effort=low "Good morning"`.
+  `--ignore-user-config` skips your MCP servers; it's added only on Codex versions that support it.
 - **Reset detection (watch mode). It spends no quota and reads no tokens.**
   - Codex writes its own limits to `~/.codex/sessions/**/rollout-*.jsonl` (`payload.rate_limits.primary.resets_at`).
     UsageForge reads them there, so it also sees windows that you started yourself.
@@ -59,13 +60,15 @@ Installing copies the script into the state directory and runs it from there. ma
   - **Anything else** (still offline after a wake-up, logged out): it retries 3 times, one minute apart, then backs off for 15 minutes.
   - **Hung ping:** each one is killed after 2 minutes.
 - Job pings wait a random 0–2 minutes (`UF_JITTER`, in seconds) so they don't land on the same second every day.
-- Logs go to `~/.local/state/usageforge/log`.
+- Only one job run happens at a time, enforced with a lock. The log is trimmed to its last 1000 lines once it passes 2000.
+- Logs go to `~/.local/state/usageforge/log`, which only your user can read.
 
 ## Caveats
 
 - **A sleeping laptop can't send anything.** launchd runs a missed job as soon as the Mac wakes.
   To wake the Mac for a 6:00 ping: `sudo pmset repeat wakeorpoweron MTWRFSU 05:58:00`.
   Linux cron skips jobs missed during sleep. Watch mode catches up on its next 5-minute check.
+  cron uses the system time zone, which is often UTC on servers.
 - **`claude -p` billing may change.** If Anthropic starts billing it separately (announced, then paused, in 2026), a `claude -p` ping might stop opening the interactive window. See `docs/research.md`.
 - Each ping uses a small amount of your weekly (7-day) quota. Watch mode sends about 4–5 pings a day.
 - This moves *when* your window starts. It doesn't give you more usage.
