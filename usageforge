@@ -7,7 +7,6 @@
 #   usageforge ping [claude|codex]      send one message now
 #   usageforge status [--json]          modes, reset times, recent log
 #   usageforge doctor                   check the setup and say what to fix
-#   usageforge statusline --install     live Claude usage via Claude Code's status line (--uninstall to undo)
 #   usageforge start | stop             turn the background check on / off
 #
 # Settings live in ~/.local/state/usageforge/config.json, per tool: mode, times, days, prompt, model.
@@ -102,6 +101,30 @@ codex_limits() {
   find "$SESSIONS" -name 'rollout-*.jsonl' -mtime -8 -exec ls -t {} + 2>/dev/null | head -3 |
     while IFS= read -r f; do grep -h '"rate_limits"' "$f"; done |
     jq -sc 'map(.payload.rate_limits) | max_by(.primary.resets_at // 0) // {}' 2>/dev/null
+}
+
+# Live Claude usage from Claude Code's own `/usage` command: it runs locally and sends no message,
+# so it costs no quota. Saved at most once a minute; also tells the scheduler the real reset time.
+claude_usage() {
+  local rep safe=()
+  [ -n "$(find "$STATE/claude.limits" -mmin -1 2>/dev/null)" ] && [ -z "${UF_FRESH:-}" ] && return 0
+  claude --help 2>/dev/null | grep -q -- --safe-mode && safe=(--safe-mode)
+  rep=$(cd "$STATE" && limit claude -p "/usage" --tools "" ${safe[@]+"${safe[@]}"} --setting-sources project \
+          --strict-mcp-config --no-session-persistence --output-format stream-json --verbose 2>/dev/null |
+        jq -c 'select(.usage_report) | .usage_report.rate_limits.limits // empty' 2>/dev/null | tail -1)
+  [ -n "$rep" ] || return 0
+  rep=$(jq -c --argjson now "$(now)" '
+    def secs: if . == null then null elif type == "string"
+      then (sub("\\.[0-9]+"; "") | sub("[+]00:00$"; "Z") | try fromdateiso8601 catch null) else . end;
+    (map(select(.kind == "session")) | first) as $s | (map(select(.kind == "weekly_all")) | first) as $w |
+    {source: "usage", at: $now, unifiedWindows: {
+      five_hour: {utilization: (($s.percent // 0) / 100), resetsAt: (if $s.is_active then ($s.resets_at | secs) else null end)},
+      seven_day: {utilization: (($w.percent // 0) / 100), resetsAt: ($w.resets_at | secs)}}}' <<<"$rep") || return 0
+  echo "$rep" >"$STATE/claude.limits.tmp" && mv -f "$STATE/claude.limits.tmp" "$STATE/claude.limits"
+  # Weekly cap hit -> wait for the weekly reset; otherwise the open window's reset (or none).
+  jq -r --argjson now "$(now)" '.unifiedWindows as $u |
+    if $u.seven_day.utilization >= 1 then $u.seven_day.resetsAt
+    elif ($u.five_hour.resetsAt // 0) > $now then $u.five_hour.resetsAt else 0 end // 0' <<<"$rep" >"$STATE/claude.reset"
 }
 
 # Epoch second when the tool may next be pinged (0 = now). Always prints one integer.
@@ -224,6 +247,7 @@ tick() {
       continue
     fi
     [ "$(now)" -lt "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" ] && continue
+    [ "$t" = claude ] && [ "$(cfg claude mode)" != off ] && [ -n "$(cfg claude mode)" ] && claude_usage
     due "$t" && { jitter; UF_WHY=$(cfg "$t" mode) ping "$t"; }
   done
   return 0
@@ -325,10 +349,10 @@ status_json() {
   local t tools='{}' entry limits
   for t in claude codex; do
     if [ "$t" = claude ]; then
-      limits=$(jq -c --argjson live "$(statusline_connected && echo true || echo false)" '{five_hour: ((.unifiedWindows.five_hour.utilization // null) | if . then . * 100 else null end),
+      command -v claude >/dev/null && claude_usage
+      limits=$(jq -c '{five_hour: ((.unifiedWindows.five_hour.utilization // null) | if . then . * 100 else null end),
                        weekly: ((.unifiedWindows.seven_day.utilization // null) | if . then . * 100 else null end),
-                       weekly_reset: (.unifiedWindows.seven_day.resetsAt // null), updated: (.at // null), live: $live}' "$STATE/claude.limits" 2>/dev/null) ||
-        limits=$(jq -nc --argjson live "$(statusline_connected && echo true || echo false)" '{live: $live}')
+                       weekly_reset: (.unifiedWindows.seven_day.resetsAt // null), updated: (.at // null)}' "$STATE/claude.limits" 2>/dev/null)
     else
       limits=$(codex_limits | jq -c '{five_hour: (.primary.used_percent // null), weekly: (.secondary.used_percent // null),
                                       weekly_reset: (.secondary.resets_at // null)}' 2>/dev/null)
@@ -346,65 +370,6 @@ status_json() {
     '{version: $version, now: $now, running: $running, config: $config, tools: $tools,
       log: ($log | split("\n") | map(select(length > 0)))}'
 }
-
-# ---------- Live Claude usage via Claude Code's status line ----------
-# Claude Code hands its status line the account's rate limits on every refresh. Saving them gives the
-# panel and the scheduler live numbers without spending quota or touching any token.
-
-CLAUDE_SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
-
-statusline() {
-  local input live line
-  input=$(cat)
-  live=$(jq -c --argjson now "$(now)" '.rate_limits // empty |
-    # resets_at may be epoch seconds, epoch ms or an ISO date, depending on the Claude Code version.
-    def secs: if . == null then null
-      elif type == "string" then (sub("\\.[0-9]+"; "") | sub("[+]00:00$"; "Z") | try fromdateiso8601 catch null)
-      elif . > 1e12 then (. / 1000 | floor) else . end;
-    {source: "statusline", at: $now, unifiedWindows: {
-      five_hour: {utilization: ((.five_hour.used_percentage // 0) / 100), resetsAt: (.five_hour.resets_at | secs)},
-      seven_day: {utilization: ((.seven_day.used_percentage // 0) / 100), resetsAt: (.seven_day.resets_at | secs)}}}' <<<"$input" 2>/dev/null)
-  if [ -n "$live" ]; then
-    echo "$live" >"$STATE/claude.limits.tmp" && mv -f "$STATE/claude.limits.tmp" "$STATE/claude.limits"
-    r=$(int "$(jq '.unifiedWindows.five_hour.resetsAt // 0' <<<"$live")")
-    [ "$r" -gt "$(now)" ] && echo "$r" >"$STATE/claude.reset"
-  fi
-  # Keep whatever status line the user had before; otherwise show the windows.
-  if [ -s "$STATE/statusline.prev" ]; then
-    printf '%s' "$input" | sh -c "$(cat "$STATE/statusline.prev")"
-  elif [ -n "$live" ]; then
-    jq -r '.unifiedWindows as $w | "5h \($w.five_hour.utilization * 100 | floor)%" +
-      (if $w.five_hour.resetsAt then " · resets \($w.five_hour.resetsAt | localtime | strftime("%H:%M"))" else "" end) +
-      " · week \($w.seven_day.utilization * 100 | floor)%"' <<<"$live"
-  fi
-}
-
-statusline_install() {
-  local bin="$STATE/usageforge" cmd prev
-  [ -f "$SELF" ] && { [ "$SELF" = "$bin" ] || { cp "$SELF" "$bin.tmp" && chmod 700 "$bin.tmp" && mv -f "$bin.tmp" "$bin"; }; }
-  cmd="$(printf %q "$bin") statusline"
-  mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
-  [ -s "$CLAUDE_SETTINGS" ] || echo '{}' >"$CLAUDE_SETTINGS"
-  prev=$(jq -r '.statusLine.command // empty' "$CLAUDE_SETTINGS")
-  if [ -n "$prev" ] && [ "$prev" != "$cmd" ]; then printf '%s' "$prev" >"$STATE/statusline.prev"; fi
-  cp "$CLAUDE_SETTINGS" "$STATE/claude-settings.backup.json"
-  jq --arg c "$cmd" '.statusLine = {type: "command", command: $c}' "$CLAUDE_SETTINGS" >"$CLAUDE_SETTINGS.uf.tmp" &&
-    mv -f "$CLAUDE_SETTINGS.uf.tmp" "$CLAUDE_SETTINGS" || { echo "couldn't update $CLAUDE_SETTINGS" >&2; exit 1; }
-  echo "Connected. Claude Code now shares live usage with UsageForge (your previous status line, if any, still shows)."
-}
-
-statusline_uninstall() {
-  [ -s "$CLAUDE_SETTINGS" ] || return 0
-  if [ -s "$STATE/statusline.prev" ]; then
-    jq --arg c "$(cat "$STATE/statusline.prev")" '.statusLine = {type: "command", command: $c}' "$CLAUDE_SETTINGS"
-  else
-    jq 'if (.statusLine.command // "") | endswith(" statusline") then del(.statusLine) else . end' "$CLAUDE_SETTINGS"
-  fi >"$CLAUDE_SETTINGS.uf.tmp" && mv -f "$CLAUDE_SETTINGS.uf.tmp" "$CLAUDE_SETTINGS"
-  rm -f "$STATE/statusline.prev"
-  echo "Disconnected. Claude Code's status line is back to how it was."
-}
-
-statusline_connected() { jq -e '(.statusLine.command // "") | endswith("usageforge statusline")' "$CLAUDE_SETTINGS" >/dev/null 2>&1; }
 
 # ---------- Doctor ----------
 
@@ -427,8 +392,6 @@ doctor() {
     bin=$(command -v "$t")
     if [ "$t" = claude ]; then
       [ "$(claude auth status --json 2>/dev/null | jq -r '.loggedIn // false')" = true ] && ok "signed in" || fail "not signed in: run 'claude' and log in"
-      statusline_connected && ok "live usage connected (via Claude Code's status line)" ||
-        warn "live usage not connected: run 'usageforge statusline --install' (or Connect in the panel)"
     else
       codex login status 2>&1 | grep -q '^Logged in' && ok "signed in" || fail "not signed in: run 'codex login'"
     fi
@@ -468,7 +431,6 @@ case "${1:-}" in
   stop) stop ;;
   status) [ "${2:-}" = --json ] && status_json || status ;;
   doctor) doctor ;;
-  statusline) case "${2:-}" in --install) statusline_install ;; --uninstall) statusline_uninstall ;; *) statusline ;; esac ;;
   notify-test) UF_FORCE=1 notify problems "UsageForge" "Notifications work. You'll hear from us when something needs you." ;;
   ui) command -v python3 >/dev/null || { echo "usageforge ui needs python3" >&2; exit 1; }
       [ -f "$(dirname "$SELF")/ui/server.py" ] || { echo "run 'usageforge ui' from the UsageForge repo" >&2; exit 1; }

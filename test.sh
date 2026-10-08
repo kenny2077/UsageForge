@@ -12,6 +12,7 @@ FUTURE=$(( $(date +%s) + 9999 )); WEEK=$(( $(date +%s) + 99999 ))
 cat >"$T/bin/claude" <<EOF
 #!/bin/sh
 [ "\$1" = --help ] && { echo "  --safe-mode"; exit 0; }
+[ "\$2" = /usage ] && exit 0
 echo x >>"$T/claude.calls"
 printf '%s' "\$2" >"$T/claude.prompt"
 echo '{"type":"system","subtype":"init"}'
@@ -113,12 +114,13 @@ HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --jso
 if [ "$(uname)" = Darwin ]; then
   rm -f "$T/notes"
   notes() { cat "$T/notes" 2>/dev/null | wc -l | tr -d ' '; }
-  printf '#!/bin/sh\n[ "$1" = --help ] && exit 0\nexit 1\n' >"$T/bin/claude"
+  printf '#!/bin/sh\nexit 1\n' >"$T/bin/claude"
   lk ping claude || true; lk ping claude || true
   [ "$(notes)" = 1 ] || { echo "FAIL: failure should notify exactly once (got $(notes))"; exit 1; }
   cat >"$T/bin/claude" <<EOF
 #!/bin/sh
 [ "\$1" = --help ] && exit 0
+[ "\$2" = /usage ] && exit 0
 [ "\$1" = auth ] && { echo '{"loggedIn":true}'; exit 0; }
 echo '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"resetsAt":$FUTURE},"seven_day":{"utilization":0.95}}}}'
 EOF
@@ -134,16 +136,17 @@ EOF
   ! HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge doctor >/dev/null || { echo "FAIL: doctor should flag no times"; exit 1; }
 fi
 
-# Live Claude usage through Claude Code's status line: capture, keep the old status line, undo cleanly.
-mkdir -p "$T/home/.claude"; echo '{"statusLine":{"type":"command","command":"echo OLD"}}' >"$T/home/.claude/settings.json"
-lk statusline --install
+# Live Claude usage from `claude -p /usage` (sends no message): numbers and the real reset time.
 R=$(( $(date +%s) + 3000 ))
-out=$(echo '{"rate_limits":{"five_hour":{"used_percentage":40,"resets_at":'$R'},"seven_day":{"used_percentage":70}}}' |
-  HOME="$T/home" UF_STATE="$T/state" ./usageforge statusline)
-[ "$out" = OLD ] || { echo "FAIL: previous status line not kept"; exit 1; }
-[ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: live reset time not saved"; exit 1; }
-lk statusline --uninstall
-[ "$(jq -r .statusLine.command "$T/home/.claude/settings.json")" = "echo OLD" ] || { echo "FAIL: status line not restored"; exit 1; }
+cat >"$T/bin/claude" <<EOF
+#!/bin/sh
+[ "\$2" = /usage ] || exit 1
+echo '{"type":"assistant","usage_report":{"rate_limits":{"limits":[{"kind":"session","percent":40,"resets_at":"$(date -u -r $R +%Y-%m-%dT%H:%M:%S.123456+00:00 2>/dev/null || date -u -d @$R +%Y-%m-%dT%H:%M:%S.123456+00:00)","is_active":true},{"kind":"weekly_all","percent":70,"resets_at":"2030-01-01T00:00:00+00:00"}]}}}'
+EOF
+rm -f "$T/state/claude.limits"
+HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.five_hour == 40 and .tools.claude.weekly == 70' >/dev/null ||
+  { echo "FAIL: /usage numbers"; exit 1; }
+[ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: /usage reset time ($(cat "$T/state/claude.reset") vs $R)"; exit 1; }
 
 ! lk schedule 25:00 || { echo "FAIL: bad time accepted"; exit 1; }
 if [ "$(uname)" = Darwin ]; then   # plist must stay valid even with XML-special chars in paths

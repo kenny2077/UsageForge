@@ -310,7 +310,7 @@ details.adv[open] summary::after { content: "−"; }
         <div class="meter"><span class="name">This 5-hour window</span><div class="lamps five"></div><span class="val five-val"></span></div>
         <div class="meter"><span class="name">This week</span><div class="lamps week"></div><span class="val week-val"></span></div>
       </div>
-      <div class="liveline"><span class="live-text"></span><button type="button" class="btn ghost connect hidden">Connect live usage</button></div>
+      <div class="liveline"><span class="live-text"></span></div>
     </div>
 
     <div class="sec">
@@ -619,12 +619,6 @@ function build() {
     q(".prompt").addEventListener("input", (e) => { config[tool].prompt = e.target.value; save(); });
     q(".model").addEventListener("input", (e) => { config[tool].model = e.target.value.trim(); save(); });
     q(".composer").addEventListener("submit", (e) => { e.preventDefault(); send(tool); });
-    q(".connect").addEventListener("click", async (e) => {
-      e.target.disabled = true;
-      try { state = (await api("/api/statusline", { on: true })).status; render(); toast("Connected. Numbers update while Claude Code is open."); }
-      catch (err) { toast(err.message, true); }
-      finally { e.target.disabled = false; }
-    });
 
     document.getElementById("panels").append(node);
     els[tool] = node;
@@ -659,12 +653,9 @@ function renderTool(tool) {
   // Where the numbers come from, and how fresh they are.
   const live = q(".live-text"); live.innerHTML = "";
   const ago = s.updated ? Math.max(0, Math.round((now - s.updated) / 60)) : null;
-  if (tool === "codex") live.textContent = "Live from Codex's own logs.";
-  else if (s.live) {
-    const dot = document.createElement("span"); dot.className = "on"; dot.textContent = "● Live";
-    live.append(dot, ago == null ? " · updates while Claude Code is open" : ` · updated ${ago < 1 ? "just now" : ago + " min ago"}`);
-  } else live.textContent = "Claude Code only shares usage when a message is sent. Connect to see it live.";
-  q(".connect").classList.toggle("hidden", tool !== "claude" || !!s.live || !s.installed);
+  const dot = document.createElement("span"); dot.className = "on"; dot.textContent = "● Live";
+  live.append(dot, tool === "codex" ? " · from Codex's own logs"
+    : ago == null ? " · from Claude Code's /usage" : ` · from Claude Code's /usage, ${ago < 1 ? "just now" : ago + " min ago"}`);
 
   for (const b of q(".modes").children) b.setAttribute("aria-checked", String(b.dataset.v === c.mode));
 

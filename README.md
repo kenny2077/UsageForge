@@ -83,8 +83,8 @@ There's one background check, run every 5 minutes. It re-reads the settings each
 - **Reset detection (watch mode). It spends no quota and reads no tokens.**
   - Codex writes its own limits to `~/.codex/sessions/**/rollout-*.jsonl` (`payload.rate_limits.primary.resets_at`).
     UsageForge reads them there, so it also sees windows that you started yourself.
-  - Claude: the ping's `stream-json` output includes a `rate_limit_event` with `resetsAt`.
-    UsageForge saves that value. If the event is missing, it assumes the reset is 5 hours after the ping.
+  - Claude: UsageForge runs Claude Code's own `/usage` command (`claude -p /usage`). It runs locally, sends no message and costs no quota.
+    That gives the live 5-hour and weekly percentages and the exact reset times. The control panel refreshes it at most once a minute, and the background check once every 5 minutes.
 - **When a ping fails:**
   - **Rate-limited** (5-hour or weekly cap): UsageForge waits until the reset time the server reports. For Codex it reads the weekly figure from the logs, so it doesn't send pings that can't succeed.
   - **Anything else** (still offline after a wake-up, logged out): it retries 3 times, one minute apart, then backs off for 15 minutes.

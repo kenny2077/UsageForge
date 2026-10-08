@@ -147,11 +147,6 @@ class Handler(BaseHTTPRequestHandler):
                     if r.returncode:
                         raise ValueError(r.stderr.strip() or "couldn't change the background check")
                 return self.reply(200, status())
-            if self.path == "/api/statusline":
-                r = cli("statusline", "--install" if body.get("on") else "--uninstall", timeout=30)
-                if r.returncode:
-                    raise ValueError(r.stderr.strip() or "couldn't change Claude Code's status line")
-                return self.reply(200, {"status": status()})
             if self.path == "/api/notify-test":
                 cli("notify-test", timeout=30)
                 return self.reply(200, {"ok": True})
