@@ -13,6 +13,14 @@ It uses `launchd` on macOS and `cron` on Linux. Windows isn't supported. WSL may
 ## Install
 
 ```bash
+brew install kenny2077/tap/usageforge
+usageforge ui        # pick your times in the control panel
+usageforge doctor    # checks your setup and tells you what to fix
+```
+
+Without Homebrew:
+
+```bash
 git clone https://github.com/kenny2077/UsageForge && cd UsageForge
 ln -s "$PWD/usageforge" ~/.local/bin/usageforge   # any directory on your PATH
 ```
@@ -34,6 +42,11 @@ The panel has one section each for Claude Code and Codex. In each you can:
 
 Each section also shows the 5-hour and weekly meters. Changes save automatically, and the background check turns itself on or off to match.
 The panel only listens on 127.0.0.1, and every request must carry a random token that's created each time the panel starts.
+
+## Notifications
+
+UsageForge sends a notification when something goes wrong (offline, signed out, or a usage limit reached). It also notifies you when this week's usage passes 90%. Each kind of problem notifies you at most once every 6 hours.
+A notification each time a window starts is off by default. Turn the types on or off under **Notify me** in the control panel.
 
 ## Modes from the terminal
 

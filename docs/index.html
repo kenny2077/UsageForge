@@ -43,7 +43,7 @@
           <a class="button button-ghost" href="https://github.com/kenny2077/UsageForge" target="_blank" rel="noopener noreferrer">Read the source <span aria-hidden="true">↗</span></a>
         </div>
         <div class="command">
-          <code id="cmd-hero">git clone https://github.com/kenny2077/UsageForge &amp;&amp; UsageForge/usageforge watch</code>
+          <code id="cmd-hero">brew install kenny2077/tap/usageforge &amp;&amp; usageforge ui</code>
           <button class="button button-ghost button-small copy" type="button" data-copy-from="cmd-hero">Copy</button>
         </div>
       </div>
@@ -176,32 +176,27 @@ recent log:
     <header class="section-head">
       <p class="kicker">Setup</p>
       <h2 id="setup-title">Set it up once.</h2>
-      <p class="sub">macOS or Linux with bash and <code>jq</code>. Have <code>claude</code> or <code>codex</code> installed and logged in.</p>
+      <p class="sub">Three steps, no terminal knowledge needed after the first.</p>
     </header>
     <ol class="steps">
       <li class="step glow">
         <span class="glyph glyph-index" data-glyph="01"><span class="glyph-text">01</span></span>
         <h3>Install</h3>
-        <p>Clone the repo and put the script on your PATH.</p>
-        <pre id="cmd-install">git clone https://github.com/kenny2077/UsageForge
-cd UsageForge
-ln -s "$PWD/usageforge" ~/.local/bin/</pre>
+        <p>One Homebrew command. Needs Claude Code or Codex, signed in.</p>
+        <pre id="cmd-install">brew install kenny2077/tap/usageforge</pre>
         <button class="button button-ghost button-small copy" type="button" data-copy-from="cmd-install">Copy</button>
       </li>
       <li class="step glow">
         <span class="glyph glyph-index" data-glyph="02"><span class="glyph-text">02</span></span>
-        <h3>Pick a mode</h3>
-        <p>Fixed times, or every window back to back.</p>
-        <pre>usageforge schedule 06:00 11:00
-<span class="p"># or</span>
-usageforge watch</pre>
+        <h3>Pick your times</h3>
+        <p>Click the hours on the timeline, or let it run back to back.</p>
+        <pre>usageforge ui</pre>
       </li>
       <li class="step glow">
         <span class="glyph glyph-index" data-glyph="03"><span class="glyph-text">03</span></span>
         <h3>Forget it</h3>
-        <p>Check on it when you like. One command removes it.</p>
-        <pre>usageforge status
-usageforge stop</pre>
+        <p>It runs in the background and tells you if something needs you.</p>
+        <pre>usageforge doctor</pre>
       </li>
     </ol>
   </section>
@@ -226,8 +221,8 @@ usageforge stop</pre>
     <h2 id="start-title">Start your window at 6:00, not when you sit down.</h2>
     <ul class="contact-options">
       <li class="contact-option glow">
-        <p class="contact-option-title">Install and watch</p>
-        <p class="contact-address contact-cmd" id="cmd-cta">git clone https://github.com/kenny2077/UsageForge &amp;&amp; UsageForge/usageforge watch</p>
+        <p class="contact-option-title">Install and open the panel</p>
+        <p class="contact-address contact-cmd" id="cmd-cta">brew install kenny2077/tap/usageforge &amp;&amp; usageforge ui</p>
         <div class="contact-option-actions">
           <button class="button button-primary button-small copy" type="button" data-copy-from="cmd-cta">Copy command</button>
         </div>
