@@ -116,6 +116,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply(200, png, "image/png")
         if path == "/api/status" and self.authed():
             return self.reply(200, status())
+        if path == "/api/doctor" and self.authed():
+            out = cli("doctor", timeout=60).stdout
+            return self.reply(200, {"problems": [l.strip()[2:] for l in out.splitlines() if l.strip().startswith("✗")]})
         self.reply(404)
 
     def do_POST(self):
@@ -128,13 +131,15 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if self.path == "/api/config":
                 config = {t: clean_tool(body[t]) for t in TOOLS if t in body}
+                notes = body.get("notify") or {}
+                config["notify"] = {k: notes[k] for k in ("started", "problems", "weekly") if type(notes.get(k)) is bool}
                 STATE.mkdir(parents=True, exist_ok=True)
                 tmp = STATE / "config.json.tmp"
                 tmp.write_text(json.dumps(config, indent=2))
                 tmp.chmod(0o600)
                 tmp.replace(STATE / "config.json")
                 # The 5-minute check runs while any tool has a mode; it stops when both are off.
-                on = any(c["mode"] != "off" for c in config.values())
+                on = any(config[t]["mode"] != "off" for t in TOOLS if t in config)
                 installed = STATE / "usageforge"
                 stale = on and not (installed.is_file() and filecmp.cmp(CLI, installed, shallow=False))
                 if on != status()["running"] or stale:
@@ -142,6 +147,9 @@ class Handler(BaseHTTPRequestHandler):
                     if r.returncode:
                         raise ValueError(r.stderr.strip() or "couldn't change the background check")
                 return self.reply(200, status())
+            if self.path == "/api/notify-test":
+                cli("notify-test", timeout=30)
+                return self.reply(200, {"ok": True})
             if self.path == "/api/ping":
                 tool = body.get("tool")
                 if tool not in TOOLS:

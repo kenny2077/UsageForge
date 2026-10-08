@@ -201,6 +201,25 @@ details.adv[open] summary::after { content: "−"; }
 .btn.ghost:hover { background: rgba(234, 242, 248, 0.11); }
 .btn:focus-visible, .days button:focus-visible, .presets button:focus-visible { clip-path: none; }
 
+/* Health banner: what `usageforge doctor` says needs fixing */
+.health { display: grid; gap: 6px; margin-bottom: 20px; padding: 14px 18px; background: rgba(255, 111, 125, 0.08); box-shadow: inset 0 0 0 1px rgba(255, 111, 125, 0.45); clip-path: var(--chamfer); }
+.health b { font: 700 16px/1.2 var(--display); font-stretch: 85%; }
+.health li { color: var(--ink-2); font-size: 14px; margin-left: 18px; }
+.health ul { margin: 0; padding: 0; }
+
+/* Notifications */
+.notes { margin-top: 20px; padding: 20px 24px; background: var(--night-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer-lg); }
+.notes .row { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; }
+.notes h3 { font-size: 26px; margin-right: 8px; }
+.switch { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; color: var(--ink-2); font-size: 14px; }
+.switch input { position: absolute; opacity: 0; width: 1px; height: 1px; }
+.switch i { position: relative; width: 36px; height: 20px; flex: none; background: rgba(150, 205, 245, 0.14); clip-path: var(--chamfer); transition: background 0.2s; }
+.switch i::after { content: ""; position: absolute; top: 4px; left: 4px; width: 12px; height: 12px; background: var(--muted); transition: transform 0.2s var(--ease), background 0.2s; }
+.switch input:checked + i { background: rgba(79, 227, 208, 0.35); }
+.switch input:checked + i::after { transform: translateX(16px); background: var(--aurora); }
+.switch input:focus-visible + i { outline: 2px solid var(--amber); outline-offset: 3px; clip-path: none; }
+.notes .btn { margin-left: auto; }
+
 /* Activity */
 .activity { margin-top: 20px; background: var(--night-2); box-shadow: inset 0 0 0 1px var(--line); clip-path: var(--chamfer-lg); }
 .activity .bar2 { display: flex; align-items: center; gap: 14px; padding: 16px 24px; border-bottom: 1px solid var(--line); }
@@ -247,7 +266,18 @@ details.adv[open] summary::after { content: "−"; }
 </header>
 
 <main>
+  <div class="health hidden" id="health" role="alert"></div>
   <div class="panels" id="panels"></div>
+
+  <section class="notes" aria-labelledby="notes-title">
+    <div class="row">
+      <h3 id="notes-title">Notify me</h3>
+      <label class="switch"><input type="checkbox" data-note="started"><i></i>When a window starts</label>
+      <label class="switch"><input type="checkbox" data-note="problems"><i></i>When something goes wrong</label>
+      <label class="switch"><input type="checkbox" data-note="weekly"><i></i>When this week passes 90%</label>
+      <button type="button" class="btn ghost" id="test-note">Send a test</button>
+    </div>
+  </section>
 
   <section class="activity" aria-labelledby="act-title">
     <div class="bar2">
@@ -351,7 +381,8 @@ const DEFAULT = { mode: "off", times: ["06:00"], days: [0, 1, 2, 3, 4, 5, 6], pr
 const WINDOW = 5 * 60; // minutes
 
 let state = null;
-let config = { claude: { ...DEFAULT }, codex: { ...DEFAULT } };
+const NOTIFY = { started: false, problems: true, weekly: true };
+let config = { claude: { ...DEFAULT }, codex: { ...DEFAULT }, notify: { ...NOTIFY } };
 let saveTimer = 0;
 let logFilter = "all";
 const els = {};
@@ -693,7 +724,26 @@ function renderLog() {
   document.getElementById("synced").textContent = `Updated ${clockTs(Date.now() / 1000)}`;
 }
 
+function renderNotes() {
+  for (const box of document.querySelectorAll("[data-note]")) box.checked = !!config.notify[box.dataset.note];
+}
+
+async function checkHealth() {
+  try {
+    const { problems } = await api("/api/doctor");
+    const box = document.getElementById("health");
+    box.innerHTML = "";
+    box.classList.toggle("hidden", !problems.length);
+    if (!problems.length) return;
+    const title = document.createElement("b"); title.textContent = "Needs your attention";
+    const list = document.createElement("ul");
+    for (const p of problems) { const li = document.createElement("li"); li.textContent = p[0].toUpperCase() + p.slice(1); list.append(li); }
+    box.append(title, list);
+  } catch {}
+}
+
 function render() {
+  renderNotes();
   for (const tool of Object.keys(TOOLS)) renderTool(tool);
   renderEngine(); renderLog();
 }
@@ -702,7 +752,7 @@ function render() {
 function save() {
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    try { state = await api("/api/config", config); render(); toast("Saved"); }
+    try { state = await api("/api/config", config); render(); toast("Saved"); checkHealth(); }
     catch (err) { toast(err.message, true); }
     finally { saveTimer = 0; }
   }, 600);
@@ -737,7 +787,10 @@ async function refresh(first) {
   try {
     const fresh = await api("/api/status");
     state = fresh;
-    if (first) for (const tool of Object.keys(TOOLS)) config[tool] = { ...DEFAULT, ...(state.config?.[tool] || {}) };
+    if (first) {
+      for (const tool of Object.keys(TOOLS)) config[tool] = { ...DEFAULT, ...(state.config?.[tool] || {}) };
+      config.notify = { ...NOTIFY, ...(state.config?.notify || {}) };
+    }
     render();
   } catch {
     const e = document.getElementById("engine"); e.classList.remove("on"); e.lastElementChild.textContent = "Panel closed";
@@ -751,9 +804,19 @@ document.getElementById("logfilter").addEventListener("click", (e) => {
   renderLog();
 });
 
+document.querySelector(".notes").addEventListener("change", (e) => {
+  const box = e.target.closest("[data-note]"); if (!box) return;
+  config.notify[box.dataset.note] = box.checked; save();
+});
+document.getElementById("test-note").addEventListener("click", async () => {
+  try { await api("/api/notify-test", {}); toast("Sent. Check the top-right corner of your screen."); }
+  catch (err) { toast(err.message, true); }
+});
+
 build();
 render();
 refresh(true);
+checkHealth();
 // Pick up new activity and the moving "now" line, without touching unsaved edits.
 setInterval(() => { if (!saveTimer) refresh(false); }, 30000);
 </script>

@@ -32,6 +32,7 @@ mode=\$(cat "$T/codex.mode" 2>/dev/null)
 mkdir -p "$S"
 echo '{"payload":{"rate_limits":{"primary":{"resets_at":$FUTURE},"secondary":{"used_percent":10,"resets_at":$WEEK}}}}' >"$S/rollout-new.jsonl"
 EOF
+printf '#!/bin/sh\necho "$@" >>"%s/notes"\n' "$T" >"$T/bin/osascript"   # never pop real notifications
 chmod +x "$T/bin/"*
 
 lk() { HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" UF_TOOLS="claude codex" UF_RETRY_DELAY=0 UF_JITTER=0 ./usageforge "$@" >/dev/null; }
@@ -96,7 +97,7 @@ cat >"$T/bin/claude" <<EOF
 [ "\$1" = --help ] && exit 0
 echo '{"type":"rate_limit_event","rate_limit_info":{"status":"rejected"}}'; exit 1
 EOF
-lk ping claude
+! lk ping claude || { echo "FAIL: rejected ping should exit non-zero"; exit 1; }
 [ "$(cat "$T/state/claude.reset")" -gt "$(date +%s)" ] || { echo "FAIL: rejected ping without resetsAt"; exit 1; }
 cat >"$T/bin/claude" <<EOF
 #!/bin/sh
@@ -107,6 +108,31 @@ UF_PROMPT="One-off" lk ping claude
 [ "$(cat "$T/claude.prompt")" = "One-off" ] || { echo "FAIL: UF_PROMPT not used"; exit 1; }
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.installed and (.config.claude.mode == "schedule")' >/dev/null ||
   { echo "FAIL: status --json"; exit 1; }
+
+# Notifications: problems once per 6 h, "window started" only when switched on, never for manual pings.
+if [ "$(uname)" = Darwin ]; then
+  rm -f "$T/notes"
+  notes() { cat "$T/notes" 2>/dev/null | wc -l | tr -d ' '; }
+  printf '#!/bin/sh\n[ "$1" = --help ] && exit 0\nexit 1\n' >"$T/bin/claude"
+  lk ping claude || true; lk ping claude || true
+  [ "$(notes)" = 1 ] || { echo "FAIL: failure should notify exactly once (got $(notes))"; exit 1; }
+  cat >"$T/bin/claude" <<EOF
+#!/bin/sh
+[ "\$1" = --help ] && exit 0
+[ "\$1" = auth ] && { echo '{"loggedIn":true}'; exit 0; }
+echo '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"resetsAt":$FUTURE},"seven_day":{"utilization":0.95}}}}'
+EOF
+  rm -f "$T/state/claude.backoff"; echo 1 >"$T/state/claude.reset"
+  cfg '{"claude":{"mode":"watch"},"codex":{"mode":"off"},"notify":{"started":true}}'
+  lk tick
+  grep -q "new window" "$T/notes" || { echo "FAIL: started notification missing"; exit 1; }
+  grep -q "95% of this week" "$T/notes" || { echo "FAIL: weekly notification missing"; exit 1; }
+  before=$(notes); lk ping claude
+  [ "$(notes)" = "$before" ] || { echo "FAIL: manual ping should not notify"; exit 1; }
+  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge doctor | grep -q "signed in" || { echo "FAIL: doctor"; exit 1; }
+  cfg '{"claude":{"mode":"schedule","times":[]}}'
+  ! HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge doctor >/dev/null || { echo "FAIL: doctor should flag no times"; exit 1; }
+fi
 
 ! lk schedule 25:00 || { echo "FAIL: bad time accepted"; exit 1; }
 if [ "$(uname)" = Darwin ]; then   # plist must stay valid even with XML-special chars in paths

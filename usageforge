@@ -6,13 +6,14 @@
 #   usageforge watch                    ping as soon as each window resets   (mode: watch)
 #   usageforge ping [claude|codex]      send one message now
 #   usageforge status [--json]          modes, reset times, recent log
+#   usageforge doctor                   check the setup and say what to fix
 #   usageforge start | stop             turn the background check on / off
 #
 # Settings live in ~/.local/state/usageforge/config.json, per tool: mode, times, days, prompt, model.
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.0.0
+VERSION=3.1.0
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -67,6 +68,31 @@ model_for() {
 }
 # UF_PROMPT (one-off, from the control panel) > saved prompt > greeting. Never starts with "-".
 prompt_for() { local p=${UF_PROMPT:-$(cfg "$1" prompt)}; p=${p:-$(greet)}; [[ $p == -* ]] && p=" $p"; printf '%s' "$p"; }
+
+# ---------- Notifications ----------
+
+# notify <kind> <title> <message>. Kinds: started (off by default), problems, weekly (on by default).
+notify() {
+  local def=true on; [ "$1" = started ] && def=false
+  on=$(jq -r --arg k "$1" --argjson d "$def" '(.notify // {}) as $n | if ($n | has($k)) then $n[$k] else $d end' "$CONFIG" 2>/dev/null) || on=$def
+  [ "${on:-$def}" = true ] || [ -n "${UF_FORCE:-}" ] || return 0
+  if [ "$(uname)" = Darwin ]; then
+    # Text goes in as arguments, never into the AppleScript source.
+    osascript -e 'on run argv' -e 'display notification (item 2 of argv) with title (item 1 of argv)' -e 'end run' "$2" "$3" >/dev/null 2>&1
+  elif command -v notify-send >/dev/null; then
+    notify-send "$2" "$3" 2>/dev/null
+  fi
+  return 0
+}
+# once <key> <minutes>: succeeds at most once per period, so a problem doesn't notify every 5 minutes.
+once() { [ -n "$(find "$STATE/$1.note" -mmin -"$2" 2>/dev/null)" ] && return 1; touch "$STATE/$1.note"; }
+name_of() { [ "$1" = claude ] && echo "Claude Code" || echo "Codex"; }
+weekly_pct() {
+  local p
+  if [ "$1" = claude ]; then p=$(jq '.unifiedWindows.seven_day.utilization // empty | . * 100 | floor' "$STATE/claude.limits" 2>/dev/null)
+  else p=$(codex_limits | jq '.secondary.used_percent // empty | floor' 2>/dev/null); fi
+  int "$p"
+}
 
 # ---------- Reading the windows ----------
 
@@ -132,8 +158,9 @@ ping_codex() {
   echo $(( r > $(now) ? r : $(now) + 18000 )) >"$STATE/codex.reset"
 }
 
+# Exits non-zero if any tool's message didn't go through.
 ping() {
-  local t try rc
+  local t try rc failed=0
   for t in ${*:-$TOOLS}; do
     case $t in claude|codex) ;; *) log "unknown tool: $t"; continue ;; esac
     command -v "$t" >/dev/null || { log "skip $t: not installed"; continue; }
@@ -144,11 +171,18 @@ ping() {
       break
     done
     case $rc in
-      0) now >"$STATE/$t.last"; log "pinged $t (${UF_WHY:-manual}), window resets $(fmt "$(reset_at "$t")")" ;;
-      2) log "$t is rate-limited until $(fmt "$(reset_at "$t")")" ;;
-      *) log "ping $t failed (offline or logged out?); retrying in 15 min"; echo $(( $(now) + 900 )) >"$STATE/$t.backoff" ;;
+      0) now >"$STATE/$t.last"; log "pinged $t (${UF_WHY:-manual}), window resets $(fmt "$(reset_at "$t")")"
+         [ "${UF_WHY:-manual}" = manual ] || notify started "$(name_of "$t"): new window" "Started now. Resets at $(fmt "$(reset_at "$t")")."
+         [ "$(weekly_pct "$t")" -ge 90 ] && once "weekly-$t" 1440 &&
+           notify weekly "$(name_of "$t"): $(weekly_pct "$t")% of this week used" "Your weekly limit is close." ;;
+      2) log "$t is rate-limited until $(fmt "$(reset_at "$t")")"
+         once "limit-$t" 300 && notify problems "$(name_of "$t"): usage limit reached" "UsageForge waits until $(fmt "$(reset_at "$t")")." ;;
+      *) log "ping $t failed (offline or logged out?); retrying in 15 min"; echo $(( $(now) + 900 )) >"$STATE/$t.backoff"
+         once "fail-$t" 360 && notify problems "$(name_of "$t"): couldn't start a window" "Offline or signed out? Run 'usageforge doctor'. Retrying in 15 min." ;;
     esac
+    [ "$rc" = 0 ] || failed=1
   done
+  return $failed
 }
 
 # ---------- The 5-minute check ----------
@@ -311,6 +345,50 @@ status_json() {
       log: ($log | split("\n") | map(select(length > 0)))}'
 }
 
+# ---------- Doctor ----------
+
+doctor() {
+  local bad=0 t m n bin jobpath
+  ok() { echo "  ✓ $*"; }
+  warn() { echo "  ! $*"; }
+  fail() { echo "  ✗ $*"; bad=1; }
+  echo "UsageForge $VERSION"
+  ok "$(jq --version) installed"
+  command -v python3 >/dev/null && ok "python3 found (for 'usageforge ui')" || warn "python3 not found: 'usageforge ui' won't start"
+  [ -f "$PLIST" ] && jobpath=$(plutil -extract EnvironmentVariables.PATH raw "$PLIST" 2>/dev/null)
+  for t in claude codex; do
+    m=$(cfg "$t" mode); m=${m:-off}; n=$(name_of "$t")
+    echo "$n (mode: $m)"
+    if ! command -v "$t" >/dev/null; then
+      [ "$m" = off ] && warn "not installed" || fail "set to '$m' but '$t' isn't installed"
+      continue
+    fi
+    bin=$(command -v "$t")
+    if [ "$t" = claude ]; then
+      [ "$(claude auth status --json 2>/dev/null | jq -r '.loggedIn // false')" = true ] && ok "signed in" || fail "not signed in: run 'claude' and log in"
+    else
+      codex login status 2>&1 | grep -q '^Logged in' && ok "signed in" || fail "not signed in: run 'codex login'"
+    fi
+    [ -n "$jobpath" ] && [ "$m" != off ] && { PATH="$jobpath" command -v "$t" >/dev/null && ok "the background job can find it" ||
+      fail "the background job can't find $bin: run 'usageforge start' again from this terminal"; }
+    [ "$m" = schedule ] && [ -z "$(cfg "$t" times)" ] && fail "'At set times' is on but no times are set"
+    [ "$m" != off ] && [ "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" -gt "$(now)" ] && warn "last message failed; retrying at $(fmt "$(cat "$STATE/$t.backoff")")"
+  done
+  echo "Background check"
+  if running; then
+    ok "on, every 5 minutes"
+    cmp -s "$SELF" "$STATE/usageforge" || warn "it runs an older copy: run 'usageforge start' to update it"
+  else
+    [ -n "$(jq -r '[.claude.mode, .codex.mode] | map(select(. != null and . != "off")) | .[]' "$CONFIG" 2>/dev/null)" ] &&
+      fail "off, but a tool has a mode set: run 'usageforge start'" || warn "off: nothing is scheduled. Run 'usageforge ui' to pick times"
+  fi
+  n=$(grep -c "$(date +%F).*failed" "$STATE/log" 2>/dev/null); n=$(int "$n")
+  [ "$n" -gt 0 ] && warn "$n failed message(s) today; see 'usageforge status'"
+  [ "$(uname)" = Darwin ] && echo "Tip: your Mac must be awake for messages to go out. Keep it plugged in, or see the README on scheduled wake."
+  [ $bad = 0 ] && echo "All good." || echo "Fix the ✗ items above."
+  return $bad
+}
+
 # One job run at a time: cron (unlike launchd) will start a new run while a slow one still sleeps.
 lock() {
   find "$STATE/lock" -maxdepth 0 -mmin +30 -exec rmdir {} \; 2>/dev/null   # stale after a crash
@@ -326,6 +404,8 @@ case "${1:-}" in
   start) start ;;
   stop) stop ;;
   status) [ "${2:-}" = --json ] && status_json || status ;;
+  doctor) doctor ;;
+  notify-test) UF_FORCE=1 notify problems "UsageForge" "Notifications work. You'll hear from us when something needs you." ;;
   ui) command -v python3 >/dev/null || { echo "usageforge ui needs python3" >&2; exit 1; }
       [ -f "$(dirname "$SELF")/ui/server.py" ] || { echo "run 'usageforge ui' from the UsageForge repo" >&2; exit 1; }
       shift; exec python3 "$(dirname "$SELF")/ui/server.py" "$SELF" "$@" ;;
