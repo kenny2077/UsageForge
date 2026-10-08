@@ -503,7 +503,8 @@ function drawDay(node, items, { origin = 0, editable = false } = {}) {
   if (editable) { const g = document.createElement("div"); g.className = "ghosthour"; bar.append(g); }
   const ticks = node.querySelector(".ticks");
   ticks.innerHTML = "";
-  for (let k = 0; k <= 1440; k += 180) {
+  // Midnight-based days get a tick every 3 hours; "next 24 hours" ticks fall on odd minutes, so space them out.
+  for (let k = 0; k <= 1440; k += origin ? 360 : 180) {
     const span = document.createElement("span");
     span.style.left = `${(k / 1440) * 100}%`;
     span.textContent = origin && k === 0 ? "Now" : clock(origin + k).replace(":00", "");
@@ -680,7 +681,7 @@ function renderTool(tool) {
     const far = s.reset - now >= 86400;   // e.g. waiting out the weekly cap
     const first = far ? origin + 1440 : open ? origin + wrap(r.getHours() * 60 + r.getMinutes() - origin) : origin;
     const items = [];
-    if (open) items.push({ start: origin, len: first - origin, title: far ? "Waiting for the limit to reset" : "Open now", sub: "", ghost: true });
+    if (open) items.push({ start: origin, len: first - origin, title: far ? "Waiting for the limit to reset" : "Open", sub: "", ghost: true });
     for (let m = first; m < origin + 1440; m += WINDOW) items.push({ start: m, len: WINDOW, title: clock(m), sub: `to ${clock(m + WINDOW)}` });
     q(".plan-q").textContent = "Your next 24 hours: a new window as soon as each one ends";
     drawDay(node, items, { origin });

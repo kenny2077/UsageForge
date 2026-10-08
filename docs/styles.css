@@ -1323,3 +1323,30 @@ pre {
     flex-basis: 100%;
   }
 }
+
+/* ---------- Control panel showcase ---------- */
+
+.showcase {
+  position: relative;
+  z-index: 1;
+  padding: clamp(40px, 8vh, 96px) var(--gutter) clamp(56px, 10vh, 120px);
+}
+
+.shot {
+  margin: 0;
+  padding: clamp(8px, 1.2vw, 14px);
+  background: linear-gradient(160deg, var(--night-3), var(--night-2) 55%);
+  box-shadow: inset 0 0 0 1px var(--line-2), 0 60px 120px -50px rgba(79, 227, 208, 0.35), 0 40px 80px -40px #000;
+  clip-path: var(--chamfer-lg);
+}
+
+.shot img {
+  width: 100%;
+  height: auto;
+  clip-path: var(--chamfer);
+}
+
+.shot-facts {
+  justify-content: center;
+  margin: 26px 0 0;
+}

@@ -10,6 +10,8 @@ It uses `launchd` on macOS and `cron` on Linux. Windows isn't supported. WSL may
 
 **Product page:** https://kenny2077.github.io/UsageForge/
 
+![The UsageForge control panel](docs/assets/control-panel-small.webp)
+
 ## Install
 
 ```bash

@@ -23,6 +23,7 @@
     <span class="brand-text">UsageForge</span>
   </a>
   <nav class="nav-links" aria-label="Primary navigation">
+    <a href="#panel" data-section="panel">Panel</a>
     <a href="#modes" data-section="modes">Modes</a>
     <a href="#setup" data-section="setup">Setup</a>
     <a href="#faq" data-section="faq">FAQ</a>
@@ -50,10 +51,10 @@
       <nav class="lab-index" aria-label="UsageForge at a glance">
         <p class="lab-index-head"><span>Forge index</span><span>04 parts</span></p>
         <ol>
-          <li><a href="#schedule" data-tint="schedule"><span class="ix">01</span><span class="ix-name">Schedule mode</span><span class="ix-status">Pings at the times you pick</span></a></li>
-          <li><a href="#watch" data-tint="watch"><span class="ix">02</span><span class="ix-name">Watch mode</span><span class="ix-status">Next window the minute one resets</span></a></li>
-          <li><a href="#private" data-tint="private"><span class="ix">03</span><span class="ix-name">Claude Code</span><span class="ix-status">One Haiku message, tools off</span></a></li>
-          <li><a href="#private" data-tint="codex"><span class="ix">04</span><span class="ix-name">Codex</span><span class="ix-status">One read-only exec</span></a></li>
+          <li><a href="#panel" data-tint="schedule"><span class="ix">01</span><span class="ix-name">Control panel</span><span class="ix-status">Click your day on a timeline</span></a></li>
+          <li><a href="#schedule" data-tint="watch"><span class="ix">02</span><span class="ix-name">At set times</span><span class="ix-status">Windows start when you choose</span></a></li>
+          <li><a href="#watch" data-tint="private"><span class="ix">03</span><span class="ix-name">Back to back</span><span class="ix-status">The next window the minute one ends</span></a></li>
+          <li><a href="#private" data-tint="codex"><span class="ix">04</span><span class="ix-name">Live usage</span><span class="ix-status">Claude Code and Codex, no quota spent</span></a></li>
         </ol>
       </nav>
     </div>
@@ -66,12 +67,30 @@
     </div>
   </section>
 
+  <section class="showcase" id="panel" aria-labelledby="panel-title">
+    <header class="section-head">
+      <p class="kicker">Control panel</p>
+      <h2 id="panel-title">Click your day. That's the setup.</h2>
+      <p class="sub">One page on your own computer. Pick times on a timeline, see live usage for Claude Code and Codex, and send a test message. After installing, you never need the terminal.</p>
+    </header>
+    <figure class="shot">
+      <img src="assets/control-panel.webp" width="2880" height="1500" loading="lazy" decoding="async"
+        alt="The UsageForge control panel: Claude Code and Codex side by side, each with live 5-hour and weekly usage, a choice of Off, At set times or Back to back, and a 24-hour timeline of windows">
+    </figure>
+    <ul class="facts shot-facts" aria-label="Control panel highlights">
+      <li>Click an hour to add a window</li>
+      <li>Drag to move, × to remove</li>
+      <li>Live 5-hour and weekly usage</li>
+      <li>Notifies you only when it matters</li>
+    </ul>
+  </section>
+
   <section class="products" id="modes" aria-labelledby="modes-title">
     <div class="products-sky" aria-hidden="true"><canvas class="field products-field"></canvas></div>
     <header class="section-head">
       <p class="kicker">Modes</p>
       <h2 id="modes-title">Two modes. One quiet ping.</h2>
-      <p class="sub">Pick fixed times, or let it chain windows back to back. Either way it's one bash script on your machine, using the login you already have.</p>
+      <p class="sub">Pick fixed times, or let it chain windows back to back. Either way it runs quietly on your computer, using the login you already have.</p>
     </header>
 
     <div class="stack">
@@ -79,15 +98,15 @@
         <div class="card-copy">
           <div class="card-top">
             <span class="glyph glyph-index" data-glyph="01" data-tint="schedule"><span class="glyph-text">01</span></span>
-            <p class="status"><span aria-hidden="true"></span>usageforge schedule</p>
+            <p class="status"><span aria-hidden="true"></span>Mode 1</p>
           </div>
-          <p class="card-kicker">Mode 1 <span aria-hidden="true">/</span> Fixed times</p>
-          <h3 id="schedule-title">Schedule</h3>
-          <p class="card-lede">Pick the times and UsageForge pings at each one, every day. Open a window at 6:00 and it resets at 11:00, in the middle of your morning instead of after lunch.</p>
-          <ul class="facts" aria-label="Schedule mode features">
-            <li>Your times</li>
-            <li>launchd or cron</li>
-            <li>0–2 min jitter</li>
+          <p class="card-kicker">Your times <span aria-hidden="true">/</span> your days</p>
+          <h3 id="schedule-title">At set times</h3>
+          <p class="card-lede">Click the hours you want on the timeline. UsageForge sends one tiny message at each, so a window opened at 6:00 resets at 11:00, mid-morning instead of after lunch. If a window is still open, it waits for it to end.</p>
+          <ul class="facts" aria-label="At set times features">
+            <li>Click to add</li>
+            <li>Weekdays or every day</li>
+            <li>0–2 min random delay</li>
             <li>Catches up on wake</li>
           </ul>
           <div class="actions">
@@ -111,15 +130,15 @@
         <div class="card-copy">
           <div class="card-top">
             <span class="glyph glyph-index" data-glyph="02" data-tint="watch"><span class="glyph-text">02</span></span>
-            <p class="status"><span aria-hidden="true"></span>usageforge watch</p>
+            <p class="status"><span aria-hidden="true"></span>Mode 2</p>
           </div>
-          <p class="card-kicker">Mode 2 <span aria-hidden="true">/</span> Back to back</p>
-          <h3 id="watch-title">Watch</h3>
-          <p class="card-lede">Checks every five minutes and opens the next window as soon as the last one resets, all week. It reads reset times from Claude's reply and Codex's own logs, so checking costs no quota.</p>
-          <ul class="facts" aria-label="Watch mode features">
+          <p class="card-kicker">All week <span aria-hidden="true">/</span> hands off</p>
+          <h3 id="watch-title">Back to back</h3>
+          <p class="card-lede">Starts the next window the minute the last one ends, all week. It checks every five minutes using Claude Code's own <code>/usage</code> and Codex's own logs, so checking costs nothing.</p>
+          <ul class="facts" aria-label="Back to back features">
             <li>Every 5 min</li>
-            <li>No quota to check</li>
-            <li>Waits out rate limits</li>
+            <li>Checks cost no quota</li>
+            <li>Waits out usage limits</li>
             <li>Retries after wake</li>
           </ul>
           <div class="actions">
@@ -141,12 +160,12 @@
           </div>
           <p class="card-kicker">Private by design <span aria-hidden="true">/</span> MIT license</p>
           <h3 id="private-title">Your login stays yours.</h3>
-          <p class="card-lede">UsageForge runs the official <code>claude</code> and <code>codex</code> programs you already use. It never copies, exports or uploads a token. Claude's ping is one Haiku message with tools, hooks, plugins and MCP turned off.</p>
+          <p class="card-lede">UsageForge runs the official <code>claude</code> and <code>codex</code> programs you already use. It never copies, exports or uploads a token. It runs quietly in the background and only notifies you when something needs you.</p>
           <ul class="facts" aria-label="Privacy facts">
             <li>No stored tokens</li>
-            <li>No daemon</li>
-            <li>One bash file</li>
-            <li>Mock-tested</li>
+            <li>Runs in the background</li>
+            <li>Checks its own setup</li>
+            <li>MIT, open source</li>
           </ul>
           <div class="actions">
             <a class="button button-primary" href="https://github.com/kenny2077/UsageForge/blob/main/usageforge" target="_blank" rel="noopener noreferrer">Read the script <span aria-hidden="true">↗</span></a>
@@ -154,18 +173,18 @@
           </div>
         </div>
         <figure class="card-media media-term">
-          <div class="term" role="img" aria-label="Example terminal: usageforge status shows Claude and Codex windows resetting at 11:02 and 11:03, with watch mode installed">
+          <div class="term" role="img" aria-label="Example terminal: usageforge doctor reports both tools signed in and the background check on">
             <p class="term-head"><span>~ terminal</span><span>example</span></p>
-<pre><span class="p">$</span> usageforge watch
-<span class="ok">installed:</span> tick for [claude codex]
-
-<span class="p">$</span> usageforge status
-claude: window resets <span class="am">Tue 11:02</span>
-codex: window resets <span class="am">Tue 11:03</span>
-job: watch
-recent log:
-  <span class="p">06:02</span> pinged claude
-  <span class="p">06:03</span> pinged codex</pre>
+<pre><span class="p">$</span> usageforge doctor
+UsageForge 3.2.0
+Claude Code (mode: schedule)
+  <span class="ok">✓</span> signed in
+  <span class="ok">✓</span> the background job can find it
+Codex (mode: watch)
+  <span class="ok">✓</span> signed in
+Background check
+  <span class="ok">✓</span> on, every 5 minutes
+<span class="am">All good.</span></pre>
           </div>
         </figure>
       </article>
@@ -208,11 +227,13 @@ recent log:
     </header>
     <div class="faq-list">
       <details><summary>Does this give me more usage?</summary><p>No. Your caps stay the same. UsageForge changes <em>when</em> each 5-hour window starts, so a reset lands while you're working instead of while you're asleep.</p></details>
-      <details><summary>How much quota does a ping use?</summary><p>Very little. Claude gets one short Haiku message with tools, hooks, plugins and MCP servers turned off. Codex gets one read-only <code>codex exec</code> at low reasoning effort. Watch mode sends about 4–5 pings a day per tool, and each one counts a little toward your weekly cap.</p></details>
+      <details><summary>How much quota does a ping use?</summary><p>Very little. Claude gets one short Haiku message with tools, hooks, plugins and MCP servers turned off. Codex gets one read-only <code>codex exec</code> at low reasoning effort. Back to back sends about 4–5 messages a day per tool, and each one counts a little toward your weekly cap.</p></details>
       <details><summary>Is it safe for my account?</summary><p>UsageForge uses the official programs, your own login, on your own machine. It never extracts a token or shares an account, and it sends a few tiny messages a day with random timing. We found no report of anyone banned for scheduled pings. Anthropic's and OpenAI's terms leave automation a grey area, though, so read them and decide for yourself. Schedule mode is the most conservative choice.</p></details>
       <details><summary>Does my computer need to be awake?</summary><p>Yes. A sleeping laptop can't send anything. On macOS, launchd runs a missed ping as soon as the Mac wakes. To wake it on a schedule, run <code>sudo pmset repeat wakeorpoweron MTWRFSU 05:58:00</code>.</p></details>
-      <details><summary>What happens when I hit a cap?</summary><p>UsageForge reads the reset time from Claude's reply or Codex's logs and waits until then. It doesn't send pings that can't succeed.</p></details>
-      <details><summary>How do I remove it?</summary><p>Run <code>usageforge stop</code>, then delete the repo and <code>~/.local/state/usageforge</code>.</p></details>
+      <details><summary>Do I need to keep the control panel open?</summary><p>No. Closing the page changes nothing. A background check that's built into macOS runs every 5 minutes, even after a restart, and notifies you if something goes wrong.</p></details>
+      <details><summary>Where do the usage numbers come from?</summary><p>For Claude Code, from its own <code>/usage</code> command. It runs on your computer and sends no message. For Codex, from the log files Codex already writes. Neither costs any quota.</p></details>
+      <details><summary>What happens when I hit a limit?</summary><p>UsageForge sees the reset time and waits until then. It doesn't send messages that can't succeed, and it sends you one notification.</p></details>
+      <details><summary>How do I remove it?</summary><p>Set both tools to Off in the panel, or run <code>usageforge stop</code>. Then <code>brew uninstall usageforge</code> and delete <code>~/.local/state/usageforge</code>.</p></details>
     </div>
   </section>
 
