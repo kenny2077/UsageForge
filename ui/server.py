@@ -5,6 +5,7 @@ Binds 127.0.0.1 only. Every API call must carry this run's random token and a lo
 Host header, so other websites can't drive it (CSRF) or reach it by DNS rebinding.
 Usage: python3 ui/server.py /path/to/usageforge [--port 4517] [--no-open]
 """
+import errno
 import filecmp
 import json
 import os
@@ -165,8 +166,17 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
-    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
     url = f"http://127.0.0.1:{PORT}/"
+    try:
+        server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        # A panel is already running (another terminal, or one left open): just show it.
+        print(f"UsageForge control panel is already running: {url}")
+        if "--no-open" not in sys.argv:
+            webbrowser.open(url)
+        sys.exit(0)
     print(f"UsageForge control panel: {url}  (Ctrl+C to quit)")
     if "--no-open" not in sys.argv:
         webbrowser.open(url)

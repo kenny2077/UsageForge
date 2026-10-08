@@ -137,11 +137,12 @@ EOF
 fi
 
 # Live Claude usage from `claude -p /usage` (sends no message): numbers and the real reset time.
+# Real reports say is_active:false even while the 5h window is open, so it must not be trusted.
 R=$(( $(date +%s) + 3000 ))
 cat >"$T/bin/claude" <<EOF
 #!/bin/sh
 [ "\$2" = /usage ] || exit 1
-echo '{"type":"assistant","usage_report":{"rate_limits":{"limits":[{"kind":"session","percent":40,"resets_at":"$(date -u -r $R +%Y-%m-%dT%H:%M:%S.123456+00:00 2>/dev/null || date -u -d @$R +%Y-%m-%dT%H:%M:%S.123456+00:00)","is_active":true},{"kind":"weekly_all","percent":70,"resets_at":"2030-01-01T00:00:00+00:00"}]}}}'
+echo '{"type":"assistant","usage_report":{"rate_limits":{"limits":[{"kind":"session","percent":40,"resets_at":"$(date -u -r $R +%Y-%m-%dT%H:%M:%S.123456+00:00 2>/dev/null || date -u -d @$R +%Y-%m-%dT%H:%M:%S.123456+00:00)","is_active":false},{"kind":"weekly_all","percent":70,"resets_at":"2030-01-01T00:00:00+00:00"}]}}}'
 EOF
 rm -f "$T/state/claude.limits"
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.five_hour == 40 and .tools.claude.weekly == 70' >/dev/null ||
@@ -158,4 +159,8 @@ if [ "$(uname)" = Darwin ]; then   # plist must stay valid even with XML-special
   [ -x "$T/a&b<c/usageforge" ] || { echo "FAIL: script not copied"; exit 1; }
   ! HOME="$T/home" PATH="$T/bin:$PATH" UF_TOOLS=" " ./usageforge watch >/dev/null 2>&1 || { echo "FAIL: installed with no tools"; exit 1; }
 fi
+# A second `usageforge ui` must open the running panel, not crash on the busy port.
+python3 ui/server.py ./usageforge --no-open --port 4598 >/dev/null 2>&1 & P=$!; sleep 1
+python3 ui/server.py ./usageforge --no-open --port 4598 2>&1 | grep -q "already running" || { kill $P; echo "FAIL: second ui"; exit 1; }
+kill $P; wait $P 2>/dev/null || true
 echo PASS
