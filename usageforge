@@ -357,7 +357,10 @@ statusline() {
   local input live line
   input=$(cat)
   live=$(jq -c --argjson now "$(now)" '.rate_limits // empty |
-    def secs: if . == null then null elif . > 1e12 then (. / 1000 | floor) else . end;
+    # resets_at may be epoch seconds, epoch ms or an ISO date, depending on the Claude Code version.
+    def secs: if . == null then null
+      elif type == "string" then (sub("\\.[0-9]+"; "") | sub("[+]00:00$"; "Z") | try fromdateiso8601 catch null)
+      elif . > 1e12 then (. / 1000 | floor) else . end;
     {source: "statusline", at: $now, unifiedWindows: {
       five_hour: {utilization: ((.five_hour.used_percentage // 0) / 100), resetsAt: (.five_hour.resets_at | secs)},
       seven_day: {utilization: ((.seven_day.used_percentage // 0) / 100), resetsAt: (.seven_day.resets_at | secs)}}}' <<<"$input" 2>/dev/null)
