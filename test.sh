@@ -134,6 +134,17 @@ EOF
   ! HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge doctor >/dev/null || { echo "FAIL: doctor should flag no times"; exit 1; }
 fi
 
+# Live Claude usage through Claude Code's status line: capture, keep the old status line, undo cleanly.
+mkdir -p "$T/home/.claude"; echo '{"statusLine":{"type":"command","command":"echo OLD"}}' >"$T/home/.claude/settings.json"
+lk statusline --install
+R=$(( $(date +%s) + 3000 ))
+out=$(echo '{"rate_limits":{"five_hour":{"used_percentage":40,"resets_at":'$R'},"seven_day":{"used_percentage":70}}}' |
+  HOME="$T/home" UF_STATE="$T/state" ./usageforge statusline)
+[ "$out" = OLD ] || { echo "FAIL: previous status line not kept"; exit 1; }
+[ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: live reset time not saved"; exit 1; }
+lk statusline --uninstall
+[ "$(jq -r .statusLine.command "$T/home/.claude/settings.json")" = "echo OLD" ] || { echo "FAIL: status line not restored"; exit 1; }
+
 ! lk schedule 25:00 || { echo "FAIL: bad time accepted"; exit 1; }
 if [ "$(uname)" = Darwin ]; then   # plist must stay valid even with XML-special chars in paths
   printf '#!/bin/sh\nexit 0\n' >"$T/bin/launchctl"; chmod +x "$T/bin/launchctl"

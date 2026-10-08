@@ -7,6 +7,7 @@
 #   usageforge ping [claude|codex]      send one message now
 #   usageforge status [--json]          modes, reset times, recent log
 #   usageforge doctor                   check the setup and say what to fix
+#   usageforge statusline --install     live Claude usage via Claude Code's status line (--uninstall to undo)
 #   usageforge start | stop             turn the background check on / off
 #
 # Settings live in ~/.local/state/usageforge/config.json, per tool: mode, times, days, prompt, model.
@@ -324,9 +325,10 @@ status_json() {
   local t tools='{}' entry limits
   for t in claude codex; do
     if [ "$t" = claude ]; then
-      limits=$(jq -c '{five_hour: ((.unifiedWindows.five_hour.utilization // null) | if . then . * 100 else null end),
+      limits=$(jq -c --argjson live "$(statusline_connected && echo true || echo false)" '{five_hour: ((.unifiedWindows.five_hour.utilization // null) | if . then . * 100 else null end),
                        weekly: ((.unifiedWindows.seven_day.utilization // null) | if . then . * 100 else null end),
-                       weekly_reset: (.unifiedWindows.seven_day.resetsAt // null)}' "$STATE/claude.limits" 2>/dev/null)
+                       weekly_reset: (.unifiedWindows.seven_day.resetsAt // null), updated: (.at // null), live: $live}' "$STATE/claude.limits" 2>/dev/null) ||
+        limits=$(jq -nc --argjson live "$(statusline_connected && echo true || echo false)" '{live: $live}')
     else
       limits=$(codex_limits | jq -c '{five_hour: (.primary.used_percent // null), weekly: (.secondary.used_percent // null),
                                       weekly_reset: (.secondary.resets_at // null)}' 2>/dev/null)
@@ -344,6 +346,62 @@ status_json() {
     '{version: $version, now: $now, running: $running, config: $config, tools: $tools,
       log: ($log | split("\n") | map(select(length > 0)))}'
 }
+
+# ---------- Live Claude usage via Claude Code's status line ----------
+# Claude Code hands its status line the account's rate limits on every refresh. Saving them gives the
+# panel and the scheduler live numbers without spending quota or touching any token.
+
+CLAUDE_SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+
+statusline() {
+  local input live line
+  input=$(cat)
+  live=$(jq -c --argjson now "$(now)" '.rate_limits // empty |
+    def secs: if . == null then null elif . > 1e12 then (. / 1000 | floor) else . end;
+    {source: "statusline", at: $now, unifiedWindows: {
+      five_hour: {utilization: ((.five_hour.used_percentage // 0) / 100), resetsAt: (.five_hour.resets_at | secs)},
+      seven_day: {utilization: ((.seven_day.used_percentage // 0) / 100), resetsAt: (.seven_day.resets_at | secs)}}}' <<<"$input" 2>/dev/null)
+  if [ -n "$live" ]; then
+    echo "$live" >"$STATE/claude.limits.tmp" && mv -f "$STATE/claude.limits.tmp" "$STATE/claude.limits"
+    r=$(int "$(jq '.unifiedWindows.five_hour.resetsAt // 0' <<<"$live")")
+    [ "$r" -gt "$(now)" ] && echo "$r" >"$STATE/claude.reset"
+  fi
+  # Keep whatever status line the user had before; otherwise show the windows.
+  if [ -s "$STATE/statusline.prev" ]; then
+    printf '%s' "$input" | sh -c "$(cat "$STATE/statusline.prev")"
+  elif [ -n "$live" ]; then
+    jq -r '.unifiedWindows as $w | "5h \($w.five_hour.utilization * 100 | floor)%" +
+      (if $w.five_hour.resetsAt then " · resets \($w.five_hour.resetsAt | localtime | strftime("%H:%M"))" else "" end) +
+      " · week \($w.seven_day.utilization * 100 | floor)%"' <<<"$live"
+  fi
+}
+
+statusline_install() {
+  local bin="$STATE/usageforge" cmd prev
+  [ -f "$SELF" ] && { [ "$SELF" = "$bin" ] || { cp "$SELF" "$bin.tmp" && chmod 700 "$bin.tmp" && mv -f "$bin.tmp" "$bin"; }; }
+  cmd="$(printf %q "$bin") statusline"
+  mkdir -p "$(dirname "$CLAUDE_SETTINGS")"
+  [ -s "$CLAUDE_SETTINGS" ] || echo '{}' >"$CLAUDE_SETTINGS"
+  prev=$(jq -r '.statusLine.command // empty' "$CLAUDE_SETTINGS")
+  if [ -n "$prev" ] && [ "$prev" != "$cmd" ]; then printf '%s' "$prev" >"$STATE/statusline.prev"; fi
+  cp "$CLAUDE_SETTINGS" "$STATE/claude-settings.backup.json"
+  jq --arg c "$cmd" '.statusLine = {type: "command", command: $c}' "$CLAUDE_SETTINGS" >"$CLAUDE_SETTINGS.uf.tmp" &&
+    mv -f "$CLAUDE_SETTINGS.uf.tmp" "$CLAUDE_SETTINGS" || { echo "couldn't update $CLAUDE_SETTINGS" >&2; exit 1; }
+  echo "Connected. Claude Code now shares live usage with UsageForge (your previous status line, if any, still shows)."
+}
+
+statusline_uninstall() {
+  [ -s "$CLAUDE_SETTINGS" ] || return 0
+  if [ -s "$STATE/statusline.prev" ]; then
+    jq --arg c "$(cat "$STATE/statusline.prev")" '.statusLine = {type: "command", command: $c}' "$CLAUDE_SETTINGS"
+  else
+    jq 'if (.statusLine.command // "") | endswith(" statusline") then del(.statusLine) else . end' "$CLAUDE_SETTINGS"
+  fi >"$CLAUDE_SETTINGS.uf.tmp" && mv -f "$CLAUDE_SETTINGS.uf.tmp" "$CLAUDE_SETTINGS"
+  rm -f "$STATE/statusline.prev"
+  echo "Disconnected. Claude Code's status line is back to how it was."
+}
+
+statusline_connected() { jq -e '(.statusLine.command // "") | endswith("usageforge statusline")' "$CLAUDE_SETTINGS" >/dev/null 2>&1; }
 
 # ---------- Doctor ----------
 
@@ -366,6 +424,8 @@ doctor() {
     bin=$(command -v "$t")
     if [ "$t" = claude ]; then
       [ "$(claude auth status --json 2>/dev/null | jq -r '.loggedIn // false')" = true ] && ok "signed in" || fail "not signed in: run 'claude' and log in"
+      statusline_connected && ok "live usage connected (via Claude Code's status line)" ||
+        warn "live usage not connected: run 'usageforge statusline --install' (or Connect in the panel)"
     else
       codex login status 2>&1 | grep -q '^Logged in' && ok "signed in" || fail "not signed in: run 'codex login'"
     fi
@@ -405,6 +465,7 @@ case "${1:-}" in
   stop) stop ;;
   status) [ "${2:-}" = --json ] && status_json || status ;;
   doctor) doctor ;;
+  statusline) case "${2:-}" in --install) statusline_install ;; --uninstall) statusline_uninstall ;; *) statusline ;; esac ;;
   notify-test) UF_FORCE=1 notify problems "UsageForge" "Notifications work. You'll hear from us when something needs you." ;;
   ui) command -v python3 >/dev/null || { echo "usageforge ui needs python3" >&2; exit 1; }
       [ -f "$(dirname "$SELF")/ui/server.py" ] || { echo "run 'usageforge ui' from the UsageForge repo" >&2; exit 1; }

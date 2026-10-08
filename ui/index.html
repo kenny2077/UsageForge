@@ -95,6 +95,9 @@ main { padding: 28px var(--gutter) 64px; }
 .lamps.high i.on { background: var(--amber); }
 .lamps.full i.on { background: var(--rose); }
 
+.liveline { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; color: var(--faint); font-size: 13px; }
+.liveline .on { color: var(--aurora); }
+
 /* Mode as three choice cards */
 .modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .mode {
@@ -307,6 +310,7 @@ details.adv[open] summary::after { content: "−"; }
         <div class="meter"><span class="name">This 5-hour window</span><div class="lamps five"></div><span class="val five-val"></span></div>
         <div class="meter"><span class="name">This week</span><div class="lamps week"></div><span class="val week-val"></span></div>
       </div>
+      <div class="liveline"><span class="live-text"></span><button type="button" class="btn ghost connect hidden">Connect live usage</button></div>
     </div>
 
     <div class="sec">
@@ -615,6 +619,12 @@ function build() {
     q(".prompt").addEventListener("input", (e) => { config[tool].prompt = e.target.value; save(); });
     q(".model").addEventListener("input", (e) => { config[tool].model = e.target.value.trim(); save(); });
     q(".composer").addEventListener("submit", (e) => { e.preventDefault(); send(tool); });
+    q(".connect").addEventListener("click", async (e) => {
+      e.target.disabled = true;
+      try { state = (await api("/api/statusline", { on: true })).status; render(); toast("Connected. Numbers update while Claude Code is open."); }
+      catch (err) { toast(err.message, true); }
+      finally { e.target.disabled = false; }
+    });
 
     document.getElementById("panels").append(node);
     els[tool] = node;
@@ -645,6 +655,16 @@ function renderTool(tool) {
     : "No window open");
   lampRow(q(".week"), s.weekly);
   q(".week-val").textContent = s.weekly != null ? `${Math.round(s.weekly)}% used${s.weekly_reset ? " · resets " + when(s.weekly_reset) : ""}` : "Shown after the first message";
+
+  // Where the numbers come from, and how fresh they are.
+  const live = q(".live-text"); live.innerHTML = "";
+  const ago = s.updated ? Math.max(0, Math.round((now - s.updated) / 60)) : null;
+  if (tool === "codex") live.textContent = "Live from Codex's own logs.";
+  else if (s.live) {
+    const dot = document.createElement("span"); dot.className = "on"; dot.textContent = "● Live";
+    live.append(dot, ago == null ? " · updates while Claude Code is open" : ` · updated ${ago < 1 ? "just now" : ago + " min ago"}`);
+  } else live.textContent = "Claude Code only shares usage when a message is sent. Connect to see it live.";
+  q(".connect").classList.toggle("hidden", tool !== "claude" || !!s.live || !s.installed);
 
   for (const b of q(".modes").children) b.setAttribute("aria-checked", String(b.dataset.v === c.mode));
 
