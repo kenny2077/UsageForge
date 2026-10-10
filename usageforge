@@ -13,7 +13,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.2.2
+VERSION=3.3.0
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -439,7 +439,7 @@ case "${1:-}" in
   notify-test) UF_FORCE=1 notify problems "UsageForge" "Notifications work. You'll hear from us when something needs you." ;;
   ui) command -v python3 >/dev/null || { echo "usageforge ui needs python3" >&2; exit 1; }
       [ -f "$(dirname "$SELF")/ui/server.py" ] || { echo "run 'usageforge ui' from the UsageForge repo" >&2; exit 1; }
-      shift; exec python3 "$(dirname "$SELF")/ui/server.py" "$SELF" "$@" ;;
+      shift; exec python3 -B "$(dirname "$SELF")/ui/server.py" "$SELF" "$@" ;;
   -v|--version|version) echo "usageforge $VERSION" ;;
   *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
 esac

@@ -36,8 +36,10 @@ UsageForge pings whichever of the two it finds.
 usageforge ui        # opens http://127.0.0.1:4517 in your browser (needs python3)
 ```
 
+The terminal shows a small pixel dawn and the same setup check as `usageforge doctor`. The first time the panel opens, a short guide points out each part; **Guide** in the header replays it.
+
 The panel has one section each for Claude Code and Codex. In each you can:
-- pick a mode: **Off**, **Fixed times** or **Watch resets**
+- pick a mode: **Off**, **At set times** or **Back to back**
 - add ping times and choose the weekdays they run on, with a 24-hour preview of the windows they open
 - set the message and model
 - send a message now and see the reply as a chat

@@ -47,7 +47,7 @@ button, input, textarea { font: inherit; color: inherit; }
   background: rgba(5, 12, 26, 0.84); backdrop-filter: blur(14px) saturate(1.2); -webkit-backdrop-filter: blur(14px) saturate(1.2);
   border-bottom: 1px solid var(--line);
 }
-.top .left { justify-self: start; }
+.top .left { justify-self: start; display: flex; align-items: center; gap: 20px; }
 .top .right { justify-self: end; display: flex; align-items: center; gap: 16px; }
 .brand { display: grid; justify-items: center; gap: 5px; color: var(--ink); text-decoration: none; }
 .brand .row { display: flex; align-items: center; gap: 10px; font: 700 19px/1 var(--display); font-stretch: 85%; }
@@ -57,7 +57,8 @@ button, input, textarea { font: inherit; color: inherit; }
 .engine.on .dot, .state.on .dot { background: var(--amber); box-shadow: 0 0 12px rgba(255, 181, 71, 0.7); animation: pulse 2.4s steps(2) infinite; }
 @keyframes pulse { 50% { opacity: 0.45; } }
 a.link { color: var(--muted); font-size: 14px; text-decoration: none; }
-a.link:hover { color: var(--ink); }
+a.link:hover, button.link:hover { color: var(--ink); }
+button.link { padding: 0; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 14px; }
 
 /* ---------- Tool panels ---------- */
 main { padding: 28px var(--gutter) 64px; }
@@ -243,6 +244,26 @@ details.adv[open] summary::after { content: "−"; }
 .toast.bad { box-shadow: inset 0 0 0 1px rgba(255, 111, 125, 0.6); }
 @keyframes rise { from { opacity: 0; transform: translateY(12px); } }
 
+/* Guide: a short tour the first time the panel opens, and from "Guide" in the header.
+   The page stays usable underneath, so you can try each part while it's pointed out. */
+.guide-dim { position: fixed; inset: 0; z-index: 60; pointer-events: none; }
+.guide-dim.full { background: rgba(2, 6, 14, 0.74); pointer-events: auto; }
+.guide-spot { position: fixed; z-index: 60; pointer-events: none; box-shadow: 0 0 0 200vmax rgba(2, 6, 14, 0.72), inset 0 0 0 2px var(--amber); }
+.guide-card { position: fixed; z-index: 61; width: min(380px, calc(100vw - 32px)); background: var(--night-3); box-shadow: inset 0 0 0 1px var(--line-2), 0 30px 60px -24px #000; clip-path: var(--chamfer-lg); animation: rise 0.35s var(--ease); }
+.guide-card.wide { width: min(540px, calc(100vw - 32px)); }
+.guide-card .art { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.guide-card .body { padding: 20px 22px; }
+.guide-card .step { margin-bottom: 10px; color: var(--amber); font: 500 11px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
+.guide-card h3 { margin-bottom: 8px; font-size: 28px; }
+.guide-card p.text { color: var(--ink-2); font-size: 14.5px; }
+.guide-card p.text b { color: var(--ink); font-weight: 600; }
+.guide-card .nav { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
+.guide-card .pips { display: flex; gap: 4px; margin-right: auto; }
+.guide-card .pips i { width: 8px; height: 8px; background: rgba(150, 205, 245, 0.16); }
+.guide-card .pips i.on { background: var(--aurora); }
+.guide-card .skip { padding: 8px; border: 0; background: none; cursor: pointer; color: var(--muted); font-size: 13.5px; }
+.guide-card .skip:hover { color: var(--ink); }
+
 .hidden { display: none !important; }
 
 @media (max-width: 1080px) { .panels { grid-template-columns: 1fr; } }
@@ -261,7 +282,7 @@ details.adv[open] summary::after { content: "−"; }
 </head>
 <body>
 <header class="top">
-  <span class="left"><a class="link" href="https://github.com/kenny2077/UsageForge#readme" target="_blank" rel="noopener noreferrer">Help ↗</a></span>
+  <span class="left"><button type="button" class="link" id="guide-btn">Guide</button><a class="link" href="https://github.com/kenny2077/UsageForge#readme" target="_blank" rel="noopener noreferrer">Help ↗</a></span>
   <a class="brand" href="/">
     <span class="row"><img src="/assets/usageforge-mark.svg" width="44" height="24" alt="">UsageForge</span>
   </a>
@@ -760,6 +781,94 @@ function render() {
   renderEngine(); renderLog();
 }
 
+// ---------- Guide ----------
+const GUIDE = [
+  { art: true, title: "Welcome to UsageForge",
+    text: "Claude Code and Codex give you a <b>5-hour window</b> that starts with your first message. UsageForge sends one tiny message at the times you pick, so a fresh window is already running when you sit down." },
+  { at: () => els.claude.querySelector(".meters"), title: "Your usage, live",
+    text: "How much of this window and this week you've used, read from Claude Code's own <b>/usage</b> and Codex's own logs. Looking costs no quota." },
+  { at: () => els.claude.querySelector(".modes"), title: "Pick how windows start",
+    text: "<b>At set times</b> starts one at the times you choose. <b>Back to back</b> starts the next the moment one ends. Try one now: it saves on its own." },
+  { at: () => els.claude.querySelector(".day"), title: "Plan your day",
+    text: "Each block is one 5-hour window. <b>Click an empty hour</b> to add one, drag a block to move it, × to remove it." },
+  { at: () => els.claude.querySelector(".composer"), title: "Try it now",
+    text: "Sends one message right away and shows the reply. Good for checking everything works, or for starting a window early." },
+  { at: () => document.querySelector(".notes"), title: "Notifications",
+    text: "Only when something needs you: a message that didn't go through, or a week that's nearly used up." },
+  { at: () => document.getElementById("engine"), title: "It keeps going without you",
+    text: "<b>Running</b> means a check every 5 minutes, even with this page and the terminal closed. Your Mac has to be awake: keep it plugged in and macOS's Power Nap wakes it often enough." },
+];
+let guide = null;
+const el = (tag, cls = "", html = "") => Object.assign(document.createElement(tag), { className: cls, innerHTML: html });
+const visible = (n) => !!n && n.getClientRects().length > 0;
+
+function openGuide() {
+  closeGuide(false);
+  // Skip parts that aren't on screen in the current mode (e.g. the timeline while "Off").
+  const steps = GUIDE.filter((s) => !s.at || visible(s.at()));
+  guide = { steps, dim: el("div", "guide-dim"), spot: el("div", "guide-spot"), card: el("div", "guide-card") };
+  guide.card.setAttribute("role", "dialog");
+  guide.card.setAttribute("aria-labelledby", "guide-title");
+  document.body.append(guide.dim, guide.spot, guide.card);
+  showStep(0);
+}
+
+function closeGuide(done = true) {
+  if (!guide) return;
+  guide.dim.remove(); guide.spot.remove(); guide.card.remove(); guide = null;
+  if (done) { try { localStorage.setItem("uf-guide", "done"); } catch {} document.getElementById("guide-btn").focus(); }
+}
+
+function showStep(i) {
+  const g = guide, s = g.steps[i], last = i === g.steps.length - 1;
+  g.i = i;
+  g.card.classList.toggle("wide", !!s.art);
+  g.card.innerHTML = "";
+  if (s.art) g.card.append(Object.assign(new Image(120, 44), { className: "art", src: "/dawn.png", alt: "Pixel-art mountains at dawn over a lake" }));
+  const body = el("div", "body");
+  const title = el("h3", "", s.title); title.id = "guide-title";
+  body.append(el("p", "step", s.art ? "Quick guide · about a minute" : `${i} of ${g.steps.length - 1}`), title, el("p", "text", s.text));
+  const nav = el("div", "nav"), pips = el("span", "pips");
+  for (let k = 0; k < g.steps.length; k++) pips.append(el("i", k === i ? "on" : ""));
+  nav.append(pips);
+  const btn = (cls, label, fn) => { const b = el("button", cls, label); b.type = "button"; b.addEventListener("click", fn); nav.append(b); return b; };
+  if (!last) btn("skip", "Skip", () => closeGuide());
+  if (i > 0) btn("btn ghost", "Back", () => showStep(i - 1));
+  const next = btn("btn", s.art ? "Show me around" : last ? "Done" : "Next", () => (last ? closeGuide() : showStep(i + 1)));
+  body.append(nav);
+  g.card.append(body);
+  const t = s.at?.();
+  if (t) t.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  placeGuide();
+  next.focus({ preventScroll: true });
+}
+
+// The spotlight sits on the part being explained; the card goes below it, or above when there's no room.
+function placeGuide() {
+  if (!guide) return;
+  const { spot, card, dim } = guide, t = guide.steps[guide.i].at?.();
+  const vw = innerWidth, vh = innerHeight, cw = card.offsetWidth, ch = card.offsetHeight;
+  dim.classList.toggle("full", !t);
+  spot.classList.toggle("hidden", !t);
+  if (!t) return Object.assign(card.style, { left: `${(vw - cw) / 2}px`, top: `${Math.max(16, (vh - ch) / 2)}px` });
+  const r = t.getBoundingClientRect(), pad = 8;
+  Object.assign(spot.style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + 2 * pad}px`, height: `${r.height + 2 * pad}px` });
+  const below = r.bottom + pad + 14, above = r.top - pad - 14 - ch;
+  const top = below + ch <= vh - 16 ? below : above >= 16 ? above : Math.max(16, vh - ch - 16);
+  Object.assign(card.style, { top: `${top}px`, left: `${Math.min(Math.max(16, r.left), vw - cw - 16)}px` });
+}
+
+addEventListener("scroll", placeGuide, { passive: true });
+addEventListener("resize", placeGuide);
+document.addEventListener("keydown", (e) => {
+  if (!guide || e.target.closest?.("input, textarea")) return;
+  const last = guide.i === guide.steps.length - 1;
+  if (e.key === "Escape") closeGuide();
+  else if (e.key === "ArrowRight") last ? closeGuide() : showStep(guide.i + 1);
+  else if (e.key === "ArrowLeft" && guide.i > 0) showStep(guide.i - 1);
+});
+document.getElementById("guide-btn").addEventListener("click", openGuide);
+
 // ---------- Actions ----------
 function save() {
   clearTimeout(saveTimer);
@@ -804,6 +913,9 @@ async function refresh(first) {
       config.notify = { ...NOTIFY, ...(state.config?.notify || {}) };
     }
     render();
+    let seen = false;
+    try { seen = localStorage.getItem("uf-guide") === "done"; } catch {}
+    if (first && !seen) openGuide();
   } catch {
     const e = document.getElementById("engine"); e.classList.remove("on"); e.lastElementChild.textContent = "Panel closed";
   }

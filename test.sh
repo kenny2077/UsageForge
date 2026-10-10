@@ -171,4 +171,8 @@ fi
 python3 ui/server.py ./usageforge --no-open --port 4598 >/dev/null 2>&1 & P=$!; sleep 1
 python3 ui/server.py ./usageforge --no-open --port 4598 2>&1 | grep -q "already running" || { kill $P; echo "FAIL: second ui"; exit 1; }
 kill $P; wait $P 2>/dev/null || true
+# The pixel dawn: a valid PNG, and 14 terminal rows for 28 pixels.
+python3 -B -c "import sys; sys.path.insert(0, 'ui'); import dawn
+assert dawn.png(8, 4)[:8] == b'\\x89PNG\\r\\n\\x1a\\n'
+assert dawn.ansi(64, 28).count(chr(10)) == 14" || { echo "FAIL: dawn"; exit 1; }
 echo PASS

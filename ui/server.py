@@ -11,9 +11,12 @@ import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
+import time
 import webbrowser
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -23,6 +26,8 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 STATE = Path(os.environ.get("UF_STATE") or Path.home() / ".local/state/usageforge").resolve()
 ASSETS = (HERE.parent / "docs" / "assets").resolve()
 TOKEN = secrets.token_urlsafe(24)
+sys.path.insert(0, str(HERE))
+import dawn  # noqa: E402
 TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2", ".png": "image/png"}
 # The tools' own app icons, read from the apps you have installed (nothing is bundled).
 ICONS = {
@@ -72,6 +77,52 @@ def icon(tool):
     return cache.read_bytes() if cache.is_file() else None
 
 
+@lru_cache(maxsize=1)
+def dawn_png():
+    return dawn.png(120, 44)
+
+
+def hello(url):
+    """What `usageforge ui` prints: the dawn coming up, then the setup check, in the panel's colours."""
+    if not sys.stdout.isatty() or os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb":
+        return print(f"UsageForge control panel: {url}  (Ctrl+C to quit)")
+    true = os.environ.get("COLORTERM") in ("truecolor", "24bit")
+
+    def ink(hexc, text, bold=False):
+        c = dawn.rgb(hexc)
+        code = f"38;2;{c[0]};{c[1]};{c[2]}" if true else f"38;5;{dawn._cube(c)}"
+        return f"\x1b[{'1;' if bold else ''}{code}m{text}\x1b[0m"
+
+    if shutil.get_terminal_size().columns >= 68:
+        # A five-second dawn would be a wait; this one is under a second.
+        for i in range(9):
+            if i:
+                sys.stdout.write("\x1b[14A")
+            sys.stdout.write(dawn.ansi(64, 28, 0.25 + i * 0.75 / 8, true))
+            sys.stdout.flush()
+            time.sleep(0.04)
+    print()
+    print("  " + ink("#eaf2f8", "UsageForge", True) + ink("#93a7bb", "  starts your 5-hour window on your schedule"))
+    print()
+    print("  " + ink("#ffb547", "Setup", True))
+    for line in cli("doctor", timeout=60).stdout.splitlines()[1:]:
+        mark = line.strip()[:1]
+        if line.startswith("  "):
+            color = {"✓": "#4fe3d0", "!": "#ffb547", "✗": "#ff6f7d"}.get(mark, "#c8d6e4")
+            print("    " + ink(color, mark) + ink("#c8d6e4", line.strip()[1:]))
+        elif line.startswith(("All good", "Fix the")):
+            print("  " + ink("#4fe3d0" if line.startswith("All") else "#ff6f7d", line, True))
+        elif line.startswith("Tip"):
+            print("  " + ink("#62778d", line))
+        else:
+            print("  " + ink("#eaf2f8", line))
+    print()
+    print("  " + ink("#ffb547", "Panel", True) + "  " + ink("#4fe3d0", url, True) + ink("#93a7bb", "  opening in your browser"))
+    print("  " + ink("#62778d", "New here? The panel starts with a short guide. Ctrl+C closes the panel;"))
+    print("  " + ink("#62778d", "the background check keeps running without it."))
+    print()
+
+
 def status():
     return json.loads(cli("status", "--json", timeout=60).stdout)
 
@@ -111,6 +162,8 @@ class Handler(BaseHTTPRequestHandler):
             f = (ASSETS / path[len("/assets/"):]).resolve()
             if ASSETS in f.parents and f.is_file() and f.suffix in TYPES:
                 return self.reply(200, f.read_bytes(), TYPES[f.suffix])
+        if path == "/dawn.png":
+            return self.reply(200, dawn_png(), "image/png")
         if path.startswith("/icons/") and path.endswith(".png"):
             png = icon(path[len("/icons/"):-len(".png")])
             if png:
@@ -177,7 +230,7 @@ if __name__ == "__main__":
         if "--no-open" not in sys.argv:
             webbrowser.open(url)
         sys.exit(0)
-    print(f"UsageForge control panel: {url}  (Ctrl+C to quit)")
+    hello(url)
     if "--no-open" not in sys.argv:
         webbrowser.open(url)
     try:
