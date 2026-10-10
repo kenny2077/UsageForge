@@ -13,7 +13,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.2.1
+VERSION=3.2.2
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -122,10 +122,14 @@ claude_usage() {
       five_hour: {utilization: (($s.percent // 0) / 100), resetsAt: (if $s.is_active or ($s.percent // 0) > 0 then ($s.resets_at | secs) else null end)},
       seven_day: {utilization: (($w.percent // 0) / 100), resetsAt: ($w.resets_at | secs)}}}' <<<"$rep") || return 0
   echo "$rep" >"$STATE/claude.limits.tmp" && mv -f "$STATE/claude.limits.tmp" "$STATE/claude.limits"
-  # Weekly cap hit -> wait for the weekly reset; otherwise the open window's reset (or none).
-  jq -r --argjson now "$(now)" '.unifiedWindows as $u |
+  # Weekly cap hit -> wait for the weekly reset; otherwise the open window's reset. A ping barely
+  # moves the needle, so 0% may still be an open window: then keep the reset our last ping saved.
+  local saved; saved=$(int "$(cat "$STATE/claude.reset" 2>/dev/null)")
+  jq -r --argjson now "$(now)" --argjson saved "$saved" '.unifiedWindows as $u |
     if $u.seven_day.utilization >= 1 then $u.seven_day.resetsAt
-    elif ($u.five_hour.resetsAt // 0) > $now then $u.five_hour.resetsAt else 0 end // 0' <<<"$rep" >"$STATE/claude.reset"
+    elif ($u.five_hour.resetsAt // 0) > $now then $u.five_hour.resetsAt
+    elif $saved > $now then $saved else 0 end // 0' <<<"$rep" >"$STATE/claude.reset.tmp" &&
+    mv -f "$STATE/claude.reset.tmp" "$STATE/claude.reset"
 }
 
 # Epoch second when the tool may next be pinged (0 = now). Always prints one integer.

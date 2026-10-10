@@ -148,6 +148,14 @@ rm -f "$T/state/claude.limits"
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.five_hour == 40 and .tools.claude.weekly == 70' >/dev/null ||
   { echo "FAIL: /usage numbers"; exit 1; }
 [ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: /usage reset time ($(cat "$T/state/claude.reset") vs $R)"; exit 1; }
+# Right after a ping /usage says 0% and gives a made-up reset (now + 5h): keep the reset the ping saved.
+cat >"$T/bin/claude" <<EOF
+#!/bin/sh
+echo '{"type":"assistant","usage_report":{"rate_limits":{"limits":[{"kind":"session","percent":0,"resets_at":"2030-01-01T00:00:00+00:00","is_active":false},{"kind":"weekly_all","percent":70,"resets_at":"2030-01-01T00:00:00+00:00"}]}}}'
+EOF
+rm -f "$T/state/claude.limits"; echo "$R" >"$T/state/claude.reset"
+HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json >/dev/null
+[ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: 0% /usage dropped the ping's reset ($(cat "$T/state/claude.reset") vs $R)"; exit 1; }
 
 ! lk schedule 25:00 || { echo "FAIL: bad time accepted"; exit 1; }
 if [ "$(uname)" = Darwin ]; then   # plist must stay valid even with XML-special chars in paths
