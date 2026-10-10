@@ -42,7 +42,6 @@ The panel has one section each for Claude Code and Codex. In each you can:
 - pick a mode: **Off**, **At set times** or **Back to back**
 - add ping times and choose the weekdays they run on, with a 24-hour preview of the windows they open
 - set the message and model
-- send a message now and see the reply as a chat
 
 Each section also shows the 5-hour and weekly meters. Changes save automatically, and the background check turns itself on or off to match.
 The panel only listens on 127.0.0.1, and every request must carry a random token that's created each time the panel starts.

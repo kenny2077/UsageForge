@@ -137,6 +137,7 @@ main { padding: 28px var(--gutter) 64px; }
   color: var(--night); background: linear-gradient(90deg, var(--aurora), color-mix(in srgb, var(--aurora) 72%, transparent));
   box-shadow: inset 3px 0 0 var(--amber);
 }
+.band b, .band span { overflow: hidden; text-overflow: ellipsis; }
 .band b { font: 700 14px/1 var(--mono); }
 .band span { font: 500 11.5px/1 var(--mono); opacity: 0.75; }
 .band.dragging { cursor: grabbing; opacity: 0.85; outline: 2px solid var(--amber); }
@@ -157,6 +158,7 @@ main { padding: 28px var(--gutter) 64px; }
 .adder { display: inline-flex; gap: 8px; vertical-align: middle; }
 input[type="time"], input[type="text"], textarea { padding: 9px 11px; background: var(--night); border: 0; box-shadow: inset 0 0 0 1px var(--line-2); color: var(--ink); clip-path: var(--chamfer); }
 input[type="time"] { font-family: var(--mono); color-scheme: dark; }
+input.bad { box-shadow: inset 0 0 0 1px var(--rose); }
 textarea { width: 100%; min-height: 64px; resize: vertical; line-height: 1.5; }
 input::placeholder, textarea::placeholder { color: var(--faint); }
 
@@ -180,21 +182,6 @@ details.adv[open] summary::after { content: "−"; }
 .two { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; margin-top: 14px; }
 .two input { width: 100%; font-family: var(--mono); font-size: 13.5px; }
 .field-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
-
-/* Try it now */
-.chat { display: flex; flex-direction: column; gap: 10px; max-height: 280px; min-height: 48px; overflow-y: auto; padding: 2px; }
-.msg { max-width: 86%; padding: 10px 13px; white-space: pre-wrap; overflow-wrap: anywhere; clip-path: var(--chamfer); }
-.msg.me { align-self: flex-end; color: var(--night); background: var(--aurora); }
-.msg.ai { align-self: flex-start; background: rgba(234, 242, 248, 0.06); box-shadow: inset 0 0 0 1px var(--line); }
-.msg.err { align-self: flex-start; background: rgba(255, 111, 125, 0.12); box-shadow: inset 0 0 0 1px rgba(255, 111, 125, 0.5); }
-.msg small { display: block; margin-top: 6px; color: var(--faint); font: 500 11px/1.3 var(--mono); }
-.msg.me small { color: rgba(5, 12, 26, 0.6); }
-.typing { display: inline-flex; gap: 4px; }
-.typing i { width: 6px; height: 6px; background: var(--muted); animation: blink 1s steps(2) infinite; }
-.typing i:nth-child(2) { animation-delay: 0.2s; } .typing i:nth-child(3) { animation-delay: 0.4s; }
-@keyframes blink { 50% { opacity: 0.2; } }
-.composer { display: flex; gap: 8px; margin-top: 10px; }
-.composer input { flex: 1; min-width: 0; }
 
 /* Buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; padding: 9px 16px; border: 0; cursor: pointer; font: 600 14px/1 var(--sans); color: var(--night); background: var(--aurora); clip-path: var(--chamfer); transition: background 0.2s, transform 0.15s var(--ease); white-space: nowrap; }
@@ -268,7 +255,7 @@ details.adv[open] summary::after { content: "−"; }
 
 @media (max-width: 1080px) { .panels { grid-template-columns: 1fr; } }
 @media (max-width: 600px) {
-  .top { grid-template-columns: auto 1fr; } .top .left { display: none; } .brand { justify-items: start; }
+  .top { grid-template-columns: 1fr auto auto; } .brand { order: -1; justify-items: start; } .top .left a { display: none; }
   .sec { padding: 18px 16px; }
   .modes { grid-template-columns: 1fr; }
   .meter { grid-template-columns: 1fr auto; } .meter .lamps { grid-column: 1 / -1; grid-row: 2; }
@@ -373,20 +360,11 @@ details.adv[open] summary::after { content: "−"; }
     </div>
 
     <div class="sec">
-      <p class="q">Try it now<small>Sends one message right away. That starts a window if none is open.</small></p>
-      <div class="chat" aria-live="polite"></div>
-      <form class="composer">
-        <input type="text" class="say" maxlength="500" placeholder="Say something, or leave empty for a greeting" aria-label="Message to send now">
-        <button type="submit" class="btn send">Send</button>
-      </form>
-    </div>
-
-    <div class="sec">
       <details class="adv">
         <summary>Message and model</summary>
         <div class="two">
-          <div><label class="field-label">Message sent each time</label><textarea class="prompt" maxlength="500" placeholder="Automatic: Good morning, Good afternoon or Good evening"></textarea></div>
-          <div><label class="field-label">Model</label><input type="text" class="model" maxlength="64" spellcheck="false" autocomplete="off"></div>
+          <label><span class="field-label">Message sent each time</span><textarea class="prompt" maxlength="500" placeholder="Automatic: Good morning, Good afternoon or Good evening"></textarea></label>
+          <label><span class="field-label">Model</span><input type="text" class="model" maxlength="64" spellcheck="false" autocomplete="off"></label>
         </div>
       </details>
     </div>
@@ -411,8 +389,6 @@ let config = { claude: { ...DEFAULT }, codex: { ...DEFAULT }, notify: { ...NOTIF
 let saveTimer = 0;
 let logFilter = "all";
 const els = {};
-const chats = { claude: [], codex: [] };
-try { Object.assign(chats, JSON.parse(localStorage.getItem("uf-chats") || "{}")); } catch {}
 
 // ---------- API ----------
 async function api(path, body) {
@@ -569,6 +545,7 @@ function build() {
       renderTool(tool); save();
     };
     q(".exact").addEventListener("click", () => { q(".adder").classList.toggle("hidden"); q(".new-time").focus(); });
+    q(".new-time").addEventListener("keydown", (e) => { if (e.key === "Enter") q(".add-time").click(); });
     q(".add-time").addEventListener("click", () => {
       const t = q(".new-time").value;
       if (!/^\d\d:\d\d$/.test(t)) return toast("Pick a time first", true);
@@ -603,8 +580,9 @@ function build() {
     const endDrag = () => {
       if (!drag) return;
       const d = drag; drag = null;
-      bar.dataset.justDragged = "1";   // the click that follows belongs to this drag, not to "add a time"
       if (!d.moved) return renderTool(tool);
+      // The click that follows belongs to this drag, not to "add a time". It may never come (the bar is redrawn).
+      bar.dataset.justDragged = "1"; setTimeout(() => delete bar.dataset.justDragged);
       const c = config[tool];
       const hit = clash(c.times, d.to, d.t);
       const to = hhmm(d.to);
@@ -639,8 +617,14 @@ function build() {
       config[tool].days = b.dataset.p.split(",").map(Number); renderTool(tool); save();
     });
     q(".prompt").addEventListener("input", (e) => { config[tool].prompt = e.target.value; save(); });
-    q(".model").addEventListener("input", (e) => { config[tool].model = e.target.value.trim(); save(); });
-    q(".composer").addEventListener("submit", (e) => { e.preventDefault(); send(tool); });
+    // A model name the server would refuse stays out of config, so it can't block saving anything else.
+    q(".model").addEventListener("input", (e) => {
+      const m = e.target.value.trim(), ok = /^[A-Za-z0-9._-]*$/.test(m);
+      e.target.classList.toggle("bad", !ok);
+      e.target.setCustomValidity(ok ? "" : "Letters, digits, '.', '_' and '-' only");
+      if (!ok) return e.target.reportValidity();
+      config[tool].model = m; save();
+    });
 
     document.getElementById("panels").append(node);
     els[tool] = node;
@@ -655,12 +639,11 @@ function renderTool(tool) {
 
   q(".sub").textContent = s.installed ? "Ready" : `Not found on this computer`;
   q(".sub").classList.toggle("warn", !s.installed);
-  q(".send").disabled = !s.installed;
 
   let text = "Off";
   if (c.mode === "schedule") { const n = nextScheduled(c); text = n ? `Next: ${when(n)}` : "No times set"; }
   if (c.mode === "watch") text = open ? `Next: ${when(s.reset)}` : "Starting soon";
-  if (s.backoff > now) text = `Retrying ${when(s.backoff)}`;
+  if (s.backoff > now && !open) text = `Retrying ${when(s.backoff)}`;
   q(".state-text").textContent = text;
   q(".state").classList.toggle("on", c.mode !== "off");
 
@@ -712,28 +695,12 @@ function renderTool(tool) {
 
   if (document.activeElement !== q(".prompt")) q(".prompt").value = c.prompt || "";
   if (document.activeElement !== q(".model")) q(".model").value = c.model || "";
-  renderChat(tool);
-}
-
-function renderChat(tool) {
-  const box = els[tool].querySelector(".chat");
-  box.innerHTML = "";
-  for (const m of chats[tool]) {
-    const div = document.createElement("div");
-    div.className = `msg ${m.from}`;
-    if (m.typing) div.innerHTML = '<span class="typing"><i></i><i></i><i></i></span>';
-    else div.textContent = m.text;
-    if (m.meta) { const s = document.createElement("small"); s.textContent = m.meta; div.append(s); }
-    box.append(div);
-  }
-  box.classList.toggle("hidden", !chats[tool].length);
-  box.scrollTop = box.scrollHeight;
 }
 
 function renderEngine() {
   const e = document.getElementById("engine");
   e.classList.toggle("on", !!state?.running);
-  e.lastElementChild.textContent = state?.running ? "Running" : "Paused";
+  e.lastElementChild.textContent = state?.running ? "Running" : "Off";
   e.title = state?.running ? "UsageForge checks every 5 minutes in the background" : "Nothing is scheduled";
 }
 
@@ -741,7 +708,7 @@ function renderLog() {
   const box = document.getElementById("log");
   const lines = (state?.log || []).filter((l) => !l.includes("rate_limit_info") && (logFilter === "all" || l.includes(logFilter))).slice(-60).reverse();
   box.innerHTML = "";
-  if (!lines.length) { const e = document.createElement("p"); e.className = "empty"; e.textContent = "Nothing yet. Pick a mode or try a message."; box.append(e); return; }
+  if (!lines.length) { const e = document.createElement("p"); e.className = "empty"; e.textContent = "Nothing yet. Messages UsageForge sends show up here."; box.append(e); }
   for (const line of lines) {
     const div = document.createElement("div");
     const m = line.match(/^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d) (.*)$/);
@@ -790,23 +757,20 @@ const GUIDE = [
   { at: () => els.claude.querySelector(".modes"), title: "Pick how windows start",
     text: "<b>At set times</b> starts one at the times you choose. <b>Back to back</b> starts the next the moment one ends. Try one now: it saves on its own." },
   { at: () => els.claude.querySelector(".day"), title: "Plan your day",
-    text: "Each block is one 5-hour window. <b>Click an empty hour</b> to add one, drag a block to move it, × to remove it." },
-  { at: () => els.claude.querySelector(".composer"), title: "Try it now",
-    text: "Sends one message right away and shows the reply. Good for checking everything works, or for starting a window early." },
+    text: "With <b>At set times</b> on, a bar shows your day. Each block is one 5-hour window. <b>Click an empty hour</b> to add one, drag a block to move it, × to remove it." },
   { at: () => document.querySelector(".notes"), title: "Notifications",
-    text: "Only when something needs you: a message that didn't go through, or a week that's nearly used up." },
+    text: "Choose what's worth a notification: a new window starting, a message that didn't go through, or a week that's nearly used up." },
   { at: () => document.getElementById("engine"), title: "It keeps going without you",
-    text: "<b>Running</b> means a check every 5 minutes, even with this page and the terminal closed. Your Mac has to be awake: keep it plugged in and macOS's Power Nap wakes it often enough." },
+    text: "<b>Running</b> means a check every 5 minutes, even with this page and the terminal closed. A sleeping Mac sends nothing; it catches up when it wakes. For an early ping, the Help page shows how to wake the Mac on a schedule." },
 ];
 let guide = null;
 const el = (tag, cls = "", html = "") => Object.assign(document.createElement(tag), { className: cls, innerHTML: html });
-const visible = (n) => !!n && n.getClientRects().length > 0;
+// The part a step points at, if it's on screen right now (the day bar is hidden while "Off").
+const target = (s) => { const n = s.at?.(); return n && n.getClientRects().length ? n : null; };
 
 function openGuide() {
   closeGuide(false);
-  // Skip parts that aren't on screen in the current mode (e.g. the timeline while "Off").
-  const steps = GUIDE.filter((s) => !s.at || visible(s.at()));
-  guide = { steps, dim: el("div", "guide-dim"), spot: el("div", "guide-spot"), card: el("div", "guide-card") };
+  guide = { steps: GUIDE, dim: el("div", "guide-dim"), spot: el("div", "guide-spot"), card: el("div", "guide-card") };
   guide.card.setAttribute("role", "dialog");
   guide.card.setAttribute("aria-labelledby", "guide-title");
   document.body.append(guide.dim, guide.spot, guide.card);
@@ -837,7 +801,7 @@ function showStep(i) {
   const next = btn("btn", s.art ? "Show me around" : last ? "Done" : "Next", () => (last ? closeGuide() : showStep(i + 1)));
   body.append(nav);
   g.card.append(body);
-  const t = s.at?.();
+  const t = target(s);
   if (t) t.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
   placeGuide();
   next.focus({ preventScroll: true });
@@ -846,7 +810,7 @@ function showStep(i) {
 // The spotlight sits on the part being explained; the card goes below it, or above when there's no room.
 function placeGuide() {
   if (!guide) return;
-  const { spot, card, dim } = guide, t = guide.steps[guide.i].at?.();
+  const { spot, card, dim } = guide, t = target(guide.steps[guide.i]);
   const vw = innerWidth, vh = innerHeight, cw = card.offsetWidth, ch = card.offsetHeight;
   dim.classList.toggle("full", !t);
   spot.classList.toggle("hidden", !t);
@@ -877,31 +841,6 @@ function save() {
     catch (err) { toast(err.message, true); }
     finally { saveTimer = 0; }
   }, 600);
-}
-
-async function send(tool) {
-  const input = els[tool].querySelector(".say");
-  const button = els[tool].querySelector(".send");
-  if (button.disabled) return;
-  const typed = input.value.trim();
-  chats[tool].push({ from: "me", text: typed || config[tool].prompt || "(greeting)", meta: clockTs(Date.now() / 1000) });
-  chats[tool].push({ from: "ai", typing: true });
-  input.value = ""; button.disabled = true; renderChat(tool);
-  try {
-    const r = await api("/api/ping", { tool, prompt: typed });
-    state = r.status;
-    chats[tool].pop();
-    const s = state.tools[tool];
-    if (r.ok) chats[tool].push({ from: "ai", text: s.reply || "(no reply text)", meta: s.reset ? `Window resets ${when(s.reset)}` : "" });
-    else chats[tool].push({ from: "err", text: r.output || "That didn't go through. See Activity below." });
-    render();
-  } catch (err) {
-    chats[tool].pop(); chats[tool].push({ from: "err", text: err.message }); renderChat(tool);
-  } finally {
-    button.disabled = !state?.tools?.[tool]?.installed;
-    chats[tool] = chats[tool].filter((m) => !m.typing).slice(-20);
-    try { localStorage.setItem("uf-chats", JSON.stringify(chats)); } catch {}
-  }
 }
 
 async function refresh(first) {

@@ -29,7 +29,7 @@ ASSETS = (HERE.parent / "docs" / "assets").resolve()
 TOKEN = secrets.token_urlsafe(24)
 sys.path.insert(0, str(HERE))
 import dawn  # noqa: E402
-TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2", ".png": "image/png"}
+TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2"}
 # The tools' own app icons, read from the apps you have installed (nothing is bundled).
 ICONS = {
     "claude": "/Applications/Claude.app/Contents/Resources/electron.icns",
@@ -61,9 +61,9 @@ def clean_tool(c):
     return {"mode": c["mode"], "times": times, "days": days, "prompt": clean_prompt(c.get("prompt")), "model": model}
 
 
-def cli(*args, env=None, timeout=420):
+def cli(*args, timeout):
     return subprocess.run([CLI, *args], capture_output=True, text=True, timeout=timeout,
-                          env={**os.environ, "UF_STATE": str(STATE), **(env or {})})
+                          env={**os.environ, "UF_STATE": str(STATE)})
 
 
 def icon(tool):
@@ -118,7 +118,7 @@ def hello(url):
         else:
             print("  " + ink(TITLE, line))
     print()
-    print("  " + ink(ACCENT, "Panel") + "  " + ink("1;" + OK, url) + ink(MUTED, "  opening in your browser"))
+    print("  " + ink(ACCENT, "Panel") + "  " + ink("1;" + OK, url) + ink(MUTED, "" if "--no-open" in sys.argv else "  opening in your browser"))
     print("  " + ink(MUTED, "New here? The panel starts with a short guide. Ctrl+C closes the panel;"))
     print("  " + ink(MUTED, "the background check keeps running without it."))
     print()
@@ -197,23 +197,16 @@ class Handler(BaseHTTPRequestHandler):
                 on = any(config[t]["mode"] != "off" for t in TOOLS if t in config)
                 installed = STATE / "usageforge"
                 stale = on and not (installed.is_file() and filecmp.cmp(CLI, installed, shallow=False))
-                if on != status()["running"] or stale:
+                now = status()
+                if on != now["running"] or stale:
                     r = cli("start" if on else "stop", timeout=60)
                     if r.returncode:
                         raise ValueError(r.stderr.strip() or "couldn't change the background check")
-                return self.reply(200, status())
+                    now = status()
+                return self.reply(200, now)
             if self.path == "/api/notify-test":
                 cli("notify-test", timeout=30)
                 return self.reply(200, {"ok": True})
-            if self.path == "/api/ping":
-                tool = body.get("tool")
-                if tool not in TOOLS:
-                    raise ValueError("tool must be claude or codex")
-                env = {"UF_RETRY_DELAY": "0"}
-                if body.get("prompt"):
-                    env["UF_PROMPT"] = clean_prompt(body["prompt"])
-                r = cli("ping", tool, env=env)
-                return self.reply(200, {"ok": r.returncode == 0, "output": r.stdout.strip(), "status": status()})
             self.reply(404, {"error": "not found"})
         except (ValueError, KeyError, TypeError, json.JSONDecodeError, subprocess.TimeoutExpired) as e:
             self.reply(400, {"error": str(e) or e.__class__.__name__})

@@ -13,7 +13,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.4.2
+VERSION=3.5.0
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -66,8 +66,8 @@ model_for() {
   [ -z "$m" ] && [ "$1" = claude ] && m=haiku
   [[ -z $m || $m =~ ^[A-Za-z0-9._-]+$ ]] && echo "$m"
 }
-# UF_PROMPT (one-off, from the control panel) > saved prompt > greeting. Never starts with "-".
-prompt_for() { local p=${UF_PROMPT:-$(cfg "$1" prompt)}; p=${p:-$(greet)}; [[ $p == -* ]] && p=" $p"; printf '%s' "$p"; }
+# The saved prompt, or a greeting. Never starts with "-".
+prompt_for() { local p; p=$(cfg "$1" prompt); p=${p:-$(greet)}; [[ $p == -* ]] && p=" $p"; printf '%s' "$p"; }
 
 # ---------- Notifications ----------
 
@@ -86,10 +86,11 @@ notify() {
 }
 # once <key> <minutes>: succeeds at most once per period, so a problem doesn't notify every 5 minutes.
 once() { [ -n "$(find "$STATE/$1.note" -mmin -"$2" 2>/dev/null)" ] && return 1; touch "$STATE/$1.note"; }
+mode_name() { case $1 in schedule) echo "At set times" ;; watch) echo "Back to back" ;; *) echo "Off" ;; esac; }
 name_of() { [ "$1" = claude ] && echo "Claude Code" || echo "Codex"; }
 weekly_pct() {
   local p
-  if [ "$1" = claude ]; then p=$(jq '.unifiedWindows.seven_day.utilization // empty | . * 100 | floor' "$STATE/claude.limits" 2>/dev/null)
+  if [ "$1" = claude ]; then claude_usage; p=$(jq '.unifiedWindows.seven_day.utilization // empty | . * 100 | floor' "$STATE/claude.limits" 2>/dev/null)
   else p=$(codex_limits | jq '.secondary.used_percent // empty | floor' 2>/dev/null); fi
   int "$p"
 }
@@ -115,7 +116,7 @@ codex_limits() {
 # so it costs no quota. Saved at most once a minute; also tells the scheduler the real reset time.
 claude_usage() {
   local rep safe=()
-  [ -n "$(find "$STATE/claude.limits" -mmin -1 2>/dev/null)" ] && [ -z "${UF_FRESH:-}" ] && return 0
+  [ -n "$(find "$STATE/claude.limits" -mmin -1 2>/dev/null)" ] && return 0
   claude --help 2>/dev/null | grep -q -- --safe-mode && safe=(--safe-mode)
   rep=$(cd "$STATE" && limit claude -p "/usage" --tools "" ${safe[@]+"${safe[@]}"} --setting-sources project \
           --strict-mcp-config --no-session-persistence --output-format stream-json --verbose 2>/dev/null |
@@ -166,9 +167,9 @@ ping_claude() {
   out=$(cd "$STATE" && limit claude -p "$(prompt_for claude)" --model "$model" --tools "" ${safe[@]+"${safe[@]}"} \
           --setting-sources project --strict-mcp-config --no-session-persistence \
           --output-format stream-json --verbose 2>>"$STATE/log") || ok=1
-  jq -Rr 'fromjson? | select(.type == "result") | .result // empty' <<<"$out" >"$STATE/claude.reply"
   out=$(jq -Rc 'fromjson? | select(.type == "rate_limit_event") | .rate_limit_info' <<<"$out" | tail -1)
-  [ -n "$out" ] && echo "$out" >"$STATE/claude.limits"
+  # The meters come from /usage, in their own shape: just make the next read fresh.
+  rm -f "$STATE/claude.limits"
   if [ "$(jq -r '.status // empty' <<<"$out")" = rejected ]; then
     r=$(int "$(jq -r '.resetsAt // empty' <<<"$out")")
     echo $(( r > 0 ? r : $(now) + 900 )) >"$STATE/claude.reset"; return 2
@@ -187,9 +188,8 @@ ping_codex() {
   codex exec --help 2>/dev/null | grep -q -- --ignore-user-config && lean=(--ignore-user-config)
   [ -n "$model" ] && lean+=(-m "$model")
   # Codex echoes the whole prompt (incl. your AGENTS.md) on stderr: keep it out of the log unless it failed.
-  rm -f "$STATE/codex.reply"
   (cd "$STATE" && limit codex exec --skip-git-repo-check --sandbox read-only ${lean[@]+"${lean[@]}"} \
-     -c model_reasoning_effort=low -o "$STATE/codex.reply" "$(prompt_for codex)" </dev/null >/dev/null 2>"$STATE/codex.err") || {
+     -c model_reasoning_effort=low "$(prompt_for codex)" </dev/null >/dev/null 2>"$STATE/codex.err") || {
     # Out of usage: not worth retrying. reset_at reads the window's end from the log.
     grep -q "hit your usage limit" "$STATE/codex.err" && return 2
     tail -n 5 "$STATE/codex.err" >>"$STATE/log"; return 1; }
@@ -202,7 +202,7 @@ ping_codex() {
 ping() {
   local t try rc failed=0
   for t in ${*:-$TOOLS}; do
-    case $t in claude|codex) ;; *) log "unknown tool: $t"; continue ;; esac
+    case $t in claude|codex) ;; *) echo "unknown tool: $t (use claude or codex)" >&2; failed=1; continue ;; esac
     command -v "$t" >/dev/null || { log "skip $t: not installed"; continue; }
     # Retry: right after wake-up the network is often not back yet.
     for try in 1 2 3; do
@@ -217,7 +217,8 @@ ping() {
            notify weekly "$(name_of "$t"): $(weekly_pct "$t")% of this week used" "Your weekly limit is close." ;;
       2) log "$t is rate-limited until $(fmt "$(reset_at "$t")")"
          once "limit-$t" 300 && notify problems "$(name_of "$t"): usage limit reached" "UsageForge waits until $(fmt "$(reset_at "$t")")." ;;
-      *) log "ping $t failed (offline or logged out?); retrying in 15 min"; echo $(( $(now) + 900 )) >"$STATE/$t.backoff"
+      *) [ "${UF_WHY:-manual}" = manual ] && { log "ping $t failed (offline or logged out?)"; failed=1; continue; }
+         log "ping $t failed (offline or logged out?); retrying in 15 min"; echo $(( $(now) + 900 )) >"$STATE/$t.backoff"
          once "fail-$t" 360 && notify problems "$(name_of "$t"): couldn't start a window" "Offline or signed out? Run 'usageforge doctor'. Retrying in 15 min." ;;
     esac
     [ "$rc" = 0 ] || failed=1
@@ -229,7 +230,7 @@ ping() {
 
 # due <tool>: should this tool be pinged right now, according to its mode?
 due() {
-  local t=$1 days time ts last
+  local t=$1 days time ts last edited
   case $(cfg "$t" mode) in
     watch) [ "$(now)" -ge "$(reset_at "$t")" ] ;;
     schedule)
@@ -237,6 +238,9 @@ due() {
       [ "$(now)" -ge "$(reset_at "$t")" ] || return 1
       days=$(cfg "$t" days)
       last=$(int "$(cat "$STATE/$t.last" 2>/dev/null)")
+      # A slot saved after its time has passed waits for tomorrow, as the panel shows.
+      # ponytail: any edit counts; a slot missed by sleep, then an edit within 3 h, skips that catch-up.
+      edited=$(int "$(date -r "$CONFIG" +%s 2>/dev/null)")
       for time in $(cfg "$t" times); do
         [[ $time =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]] || continue
         # Today's slot, and yesterday's (a 23:30 slot still catches up at 00:40).
@@ -244,7 +248,7 @@ due() {
           ts=$(( $(int "$(at "$time")") - back * 86400 ))
           [ -z "$days" ] || [[ " $days " == *" $(( ($(date +%w) + 7 - back) % 7 )) "* ]] || continue
           # Fire once per slot; a Mac that wakes up to 3 h late still catches up.
-          [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && return 0
+          [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && [ "$edited" -lt "$ts" ] && return 0
         done
       done
       return 1 ;;
@@ -350,9 +354,11 @@ watch() {
 status() {
   local t r m
   for t in claude codex; do
-    command -v "$t" >/dev/null || continue
+    m=$(cfg "$t" mode)
+    command -v "$t" >/dev/null || { [ "${m:-off}" = off ] || echo "$t: $(mode_name "$m"), but not installed"; continue; }
+    [ "$t" = claude ] && claude_usage
     r=$(reset_at "$t")
-    m=$(cfg "$t" mode); printf '%s: mode %s, ' "$t" "${m:-off}"
+    printf '%s: %s, ' "$t" "$(mode_name "$m")"
     [ "$r" -gt "$(now)" ] && echo "window resets $(fmt "$r")" || echo "no window running"
   done
   running && echo "check: on (every 5 min)" || echo "check: off"
@@ -374,16 +380,15 @@ status_json() {
                                       weekly_reset: (.secondary.resets_at // null)}' 2>/dev/null)
     fi
     entry=$(jq -n --argjson installed "$(command -v "$t" >/dev/null && echo true || echo false)" \
-      --argjson reset "$(reset_at "$t")" --argjson last "$(int "$(cat "$STATE/$t.last" 2>/dev/null)")" \
+      --argjson reset "$(reset_at "$t")" \
       --argjson backoff "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" \
-      --arg reply "$(head -c 4000 "$STATE/$t.reply" 2>/dev/null)" --argjson limits "${limits:-"{}"}" \
-      '{installed: $installed, reset: $reset, last: $last, backoff: $backoff, reply: $reply} + $limits')
+      --argjson limits "${limits:-"{}"}" '{installed: $installed, reset: $reset, backoff: $backoff} + $limits')
     tools=$(jq -c --arg t "$t" --argjson e "$entry" '.[$t] = $e' <<<"$tools")
   done
   jq -n --argjson tools "$tools" --argjson config "$( [ -s "$CONFIG" ] && cat "$CONFIG" || echo '{}')" \
     --argjson running "$(running && echo true || echo false)" --argjson now "$(now)" \
-    --arg log "$(tail -n 40 "$STATE/log" 2>/dev/null)" --arg version "$VERSION" \
-    '{version: $version, now: $now, running: $running, config: $config, tools: $tools,
+    --arg log "$(tail -n 40 "$STATE/log" 2>/dev/null)" \
+    '{now: $now, running: $running, config: $config, tools: $tools,
       log: ($log | split("\n") | map(select(length > 0)))}'
 }
 
@@ -400,9 +405,9 @@ doctor() {
   [ -f "$PLIST" ] && jobpath=$(plutil -extract EnvironmentVariables.PATH raw "$PLIST" 2>/dev/null)
   for t in claude codex; do
     m=$(cfg "$t" mode); m=${m:-off}; n=$(name_of "$t")
-    echo "$n (mode: $m)"
+    echo "$n ($(mode_name "$m"))"
     if ! command -v "$t" >/dev/null; then
-      [ "$m" = off ] && warn "not installed" || fail "set to '$m' but '$t' isn't installed"
+      [ "$m" = off ] && warn "not installed" || fail "set to '$(mode_name "$m")' but '$t' isn't installed"
       continue
     fi
     bin=$(command -v "$t")
@@ -445,12 +450,13 @@ case "${1:-}" in
   watch) watch ;;
   start) start ;;
   stop) stop ;;
-  status) [ "${2:-}" = --json ] && status_json || status ;;
+  status) case ${2:-} in --json) status_json ;; "") status ;; *) echo "usage: usageforge status [--json]" >&2; exit 1 ;; esac ;;
   doctor) doctor ;;
   notify-test) UF_FORCE=1 notify problems "UsageForge" "Notifications work. You'll hear from us when something needs you." ;;
   ui) command -v python3 >/dev/null || { echo "usageforge ui needs python3" >&2; exit 1; }
       [ -f "$(dirname "$SELF")/ui/server.py" ] || { echo "run 'usageforge ui' from the UsageForge repo" >&2; exit 1; }
       shift; exec python3 -B "$(dirname "$SELF")/ui/server.py" "$SELF" "$@" ;;
   -v|--version|version) echo "usageforge $VERSION" ;;
-  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
+  ""|-h|--help|help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//' ;;
+  *) echo "unknown command: $1 (see 'usageforge help')" >&2; exit 1 ;;
 esac

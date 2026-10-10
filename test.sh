@@ -41,7 +41,8 @@ calls() { cat "$T/$1.calls" 2>/dev/null | wc -l | tr -d ' '; }
 check() { [ "$(calls claude) $(calls codex)" = "$1" ] || { echo "FAIL: $2 (calls: $(calls claude) $(calls codex), want $1)"; exit 1; }; }
 
 mkdir -p "$T/state"; echo null >"$T/state/claude.reset"   # garbage state + empty Codex sessions dir
-cfg() { echo "$1" >"$T/state/config.json"; }
+# Saved a day ago, so slots count as set before their time (see the "just added" test).
+cfg() { echo "$1" >"$T/state/config.json"; touch -t "$(date -v-1d +%Y%m%d%H%M 2>/dev/null || date -d '-1 day' +%Y%m%d%H%M)" "$T/state/config.json"; }
 cfg '{"claude":{"mode":"watch"},"codex":{"mode":"watch"}}'
 lk tick;  check "1 1" "first tick should ping both"
 [ "$(cat "$T/state/claude.reset")" = "$FUTURE" ] || { echo "FAIL: claude reset not parsed"; exit 1; }
@@ -97,6 +98,9 @@ if [ "$past" != 23:59 ]; then
   echo $(( $(date +%s) + 600 )) >"$T/state/claude.reset"
   lk tick;  check "3 5" "slot should wait while a window is still open"
   echo 1 >"$T/state/claude.reset"
+  touch "$T/state/config.json"
+  lk tick;  check "3 5" "slot just added after its time should wait for tomorrow"
+  cfg "$(cat "$T/state/config.json")"
   lk tick;  check "4 5" "past slot today should fire once"
   [ "$(cat "$T/claude.prompt")" = "Hello forge" ] || { echo "FAIL: saved prompt not used"; exit 1; }
   lk tick;  check "4 5" "slot should not fire twice"
@@ -114,8 +118,6 @@ cat >"$T/bin/claude" <<EOF
 [ "\$1" = --help ] && exit 0
 printf '%s' "\$2" >"$T/claude.prompt"
 EOF
-UF_PROMPT="One-off" lk ping claude
-[ "$(cat "$T/claude.prompt")" = "One-off" ] || { echo "FAIL: UF_PROMPT not used"; exit 1; }
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.installed and (.config.claude.mode == "schedule")' >/dev/null ||
   { echo "FAIL: status --json"; exit 1; }
 
@@ -124,12 +126,12 @@ if [ "$(uname)" = Darwin ]; then
   rm -f "$T/notes"
   notes() { cat "$T/notes" 2>/dev/null | wc -l | tr -d ' '; }
   printf '#!/bin/sh\nexit 1\n' >"$T/bin/claude"
-  lk ping claude || true; lk ping claude || true
+  UF_WHY=watch lk ping claude || true; UF_WHY=watch lk ping claude || true
   [ "$(notes)" = 1 ] || { echo "FAIL: failure should notify exactly once (got $(notes))"; exit 1; }
   cat >"$T/bin/claude" <<EOF
 #!/bin/sh
 [ "\$1" = --help ] && exit 0
-[ "\$2" = /usage ] && exit 0
+[ "\$2" = /usage ] && { echo '{"usage_report":{"rate_limits":{"limits":[{"kind":"session","percent":1},{"kind":"weekly_all","percent":95}]}}}'; exit 0; }
 [ "\$1" = auth ] && { echo '{"loggedIn":true}'; exit 0; }
 echo '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"resetsAt":$FUTURE},"seven_day":{"utilization":0.95}}}}'
 EOF
@@ -181,6 +183,9 @@ HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --jso
   { echo "FAIL: Codex out of usage should show 100%"; exit 1; }
 
 ! lk schedule 25:00 || { echo "FAIL: bad time accepted"; exit 1; }
+for bad in "foo" "ping gemini" "status --jsno"; do
+  ! lk $bad 2>/dev/null || { echo "FAIL: 'usageforge $bad' should fail"; exit 1; }
+done
 if [ "$(uname)" = Darwin ]; then   # plist must stay valid even with XML-special chars in paths
   printf '#!/bin/sh\nexit 0\n' >"$T/bin/launchctl"; chmod +x "$T/bin/launchctl"
   HOME="$T/home" PATH="$T/bin:$PATH" UF_TOOLS=claude UF_STATE="$T/a&b<c" CODEX_HOME="$T/x&y" ./usageforge schedule 06:00 7:30 >/dev/null
