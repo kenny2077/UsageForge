@@ -320,10 +320,10 @@ function auroraSky(canvas, { strength = 1, ridge = true, ignite = true, phaseOf 
 
 // ---------- Hero: alpine dawn, in pixels ----------
 // Adapted from "alpine dawn" by bas3line (github.com/bas3line/ascii, MIT License,
-// Copyright (c) 2026 bas3line; full notice in third-party-notices.txt), redrawn as square
-// pixels instead of halftone dots. The range is raymarched once per size, so a frame only
+// Copyright (c) 2026 bas3line; full notice in third-party-notices.txt), drawn as square
+// lamps instead of round dots. The range is raymarched once per size, so a frame only
 // re-tints it; the lake looks up the picture along each cell's reflected ray. Time runs a
-// slow dawn loop: blue first light warms to gold and back over three minutes.
+// slow dawn loop: rose first light warms to gold and back over three minutes.
 
 const DAWN_PALETTE = [
   "#0e1430", "#151d40", "#1d2752", "#263365", "#314179", "#3e508c", "#4f62a0", "#6577b3", "#8090c4", "#9eaad3", "#bec6e2",
@@ -337,7 +337,6 @@ const DAWN_PALETTE = [
   "#5a4f7e", "#7b6c9c", "#9a8cb6", "#b8a8c8", "#d8bccb",
 ].map(hex);
 const DAWN_GROUND = hex("#050c1a"); // unlit cells are the page's own night, so the hero meets the page without a seam
-const COVER = [0, 0.25, 0.5, 0.75, 1];
 const smooth = (a, b, v) => {
   const k = clamp((v - a) / (b - a), 0, 1);
   return k * k * (3 - 2 * k);
@@ -395,27 +394,31 @@ const ridged = (x, y, octaves) => {
   return s / n;
 };
 
-// The scene lives in the reference's 200-column frame; the hero shows it scaled to fit.
+// The scene lives in the reference's 200 by 100 frame; the hero shows it from further back.
 const K = 0.62; // tangent of half the field of view, across 200 columns
 const HZ = 56.5; // eye level, in rows
 const CAM = 1.5; // camera height above the water
 const SHORE_Z = 46; // distance to the far shore
 const SHORE = 62; // first row of open water
 // Peaks as pyramids, each turned a little, placed by where their summits land on screen:
-// [column, row, distance, spread, turn]. The tall ones stand right of the copy.
+// [column, row, distance, spread, turn], as the original composes them. The sun sits
+// low in the gap between them, clear of every slope.
+const SUN = [151, 50];
 const PEAKS = [
-  [121, 15, 140, 0.95, 0.3],
-  [98, 31, 115, 1.1, -0.15],
-  [160, 22, 175, 0.9, 0.2],
-  [76, 39, 150, 1.0, 0.1],
-  [143, 30, 340, 1.1, 0.4],
-  [186, 34, 200, 1.5, -0.1],
-  [40, 43, 160, 1.2, 0.25],
+  [66, 11, 140, 0.95, 0.3],
+  [38, 26, 115, 1.1, -0.15],
+  [116, 22, 175, 0.9, 0.2],
+  [92, 33, 150, 1.0, 0.1],
+  [96, 25, 340, 1.1, 0.4],
+  [180, 38, 200, 1.5, -0.1],
+  [8, 30, 160, 1.2, 0.25],
+  // beyond the original frame, so the wider view closes on ridges instead of open sky
+  [-26, 34, 160, 1.2, 0.1],
+  [224, 36, 190, 1.4, -0.2],
 ].map(([sx, row, z, f, a]) => {
   const h = CAM + ((HZ - row) / 100) * K * z - 1.5;
   return [((sx - 100) / 100) * K * z, z, h, h * f, Math.cos(a), Math.sin(a)];
 });
-
 const HMAX = Math.max(...PEAKS.map(([, , ph]) => ph)) + 5; // nothing stands taller, crags included
 
 function terrain(x, z) {
@@ -487,16 +490,20 @@ function dawnScene(canvas) {
     lut[k] = best;
     return best;
   };
+  // Palette as packed RGBA words for the lamp writer (little-endian: ABGR).
+  const pack = ([r, g, b]) => ((255 << 24) | (b << 16) | (g << 8) | r) >>> 0;
+  const INK = Uint32Array.from(DAWN_PALETTE, pack);
+  const GROUND = pack(DAWN_GROUND);
   const POW = Float32Array.from({ length: 2049 }, (_, i) => (i / 1024) ** 1.1);
+  const DITHER = BAYER.map((v) => v - 0.5 / 16 - 0.47); // the original's threshold map, -0.47..0.47
 
-  let W = 0;
+  let W = 0; // the view, in reference cells: one lamp per cell, as the original draws one dot per cell
   let H = 0;
-  let R = 1; // grid cells per reference cell
-  let X0 = 0; // reference column at the grid's left edge
-  let Y0 = 0; // reference row at the grid's top edge
-  let SR = 0; // grid rows above the open water
-  let cell = 1;
-  let clear = [0, 0, 0]; // the copy's right edge, the actions' bottom, the index's left edge, in cells
+  let X0 = 0; // reference column at the view's left edge
+  let Y0 = 0; // reference row at the view's top edge
+  let SR = 0; // view rows above the open water
+  let lamp = 5; // CSS px per lamp
+  let veil = null; // per cell: how far the lamps step back behind the copy
   let depth;
   let alt;
   let sun;
@@ -520,8 +527,6 @@ function dawnScene(canvas) {
   let floor;
   let fade;
   let wisp;
-  let shadeTo = -99;
-  const SUN = [0, 0]; // set per size: in the gap right of the copy, just clearing the ridge
   const MW = 480;
   const M0 = 36;
   const MR = SHORE + 2 - M0;
@@ -534,21 +539,18 @@ function dawnScene(canvas) {
   let t = RM ? 95 : 0;
   let born = performance.now();
 
-  // Reference coordinates of a grid cell's centre.
-  const refX = (x) => X0 + (x + 0.5) / R;
-  const refY = (r) => Y0 + (r + 0.5) / R;
+  const refX = (x) => X0 + x + 0.5;
+  const refY = (r) => Y0 + r + 0.5;
 
-  function* build(cols, rows) {
+  function* build(cols, rows, sunAt) {
     W = cols;
     H = rows;
-    const portrait = H > W;
-    // Landscape shows the whole range; portrait crops in on the tall peaks.
-    R = portrait ? W / 130 : W / 200;
-    X0 = portrait ? 128 - W / (2 * R) : 0;
-    // The shore sits low in the hero so the range rises behind the lower half.
-    const shoreRow = Math.round(portrait ? H - 32 * R : H * 0.8);
-    Y0 = SHORE - shoreRow / R;
-    SR = shoreRow;
+    // The whole original frame stands at the bottom of the hero with open sky above it, and
+    // the view reaches past its sides: the valley seen from further back. The sun is placed
+    // where the copy and the index leave the sky open.
+    X0 = Math.round(SUN[0] - sunAt);
+    Y0 = 100 - H;
+    SR = SHORE - Y0;
     const N = W * H;
     depth = new Float32Array(SR * W);
     alt = new Float32Array(SR * W);
@@ -575,10 +577,8 @@ function dawnScene(canvas) {
     wisp = new Float32Array(W);
 
     // --- the range, raymarched once ---
-    const top = Math.max(0, Math.floor((0 - Y0) * R)); // nothing stands above reference row 0
-    for (let r = top; r < SR; r += 1) {
-      const y = refY(r);
-      const v = ((HZ - y) / 100) * K;
+    for (let r = Math.max(0, -Y0); r < SR; r += 1) {
+      const v = ((HZ - refY(r)) / 100) * K;
       for (let x = 0; x < W; x += 1) {
         const u = ((refX(x) - 100) / 100) * K;
         const z = march(u, v, CAM);
@@ -590,10 +590,7 @@ function dawnScene(canvas) {
         const hx = (terrain(px + e, z) - terrain(px - e, z)) / (2 * e);
         const hzz = (terrain(px, z + e) - terrain(px, z - e)) / (2 * e);
         const nl = Math.hypot(hx, 1, hzz);
-        const nx = -hx / nl;
-        const ny = 1 / nl;
-        const nz = -hzz / nl;
-        let lit = Math.max(0, nx * SUN_DIR[0] + ny * SUN_DIR[1] + nz * SUN_DIR[2]);
+        let lit = Math.max(0, (-hx * SUN_DIR[0] + SUN_DIR[1] - hzz * SUN_DIR[2]) / nl);
         if (lit > 0) {
           // cast shadow: walk toward the sun
           for (let s = 0.8; s < 160; s += 0.6 + s * 0.04) {
@@ -608,61 +605,37 @@ function dawnScene(canvas) {
         depth[k] = z;
         alt[k] = py;
         sun[k] = lit;
-        up[k] = ny;
+        up[k] = 1 / nl;
         const grain = fbm2(px * 0.4, py * 0.25, 2);
         // rock shows through in couloirs running down the fall line
         const gully = ridged(px * 0.22 + z * 0.05, py * 0.045, 2);
-        snow[k] = smooth(0.36, 0.52, ny + 0.3 * (grain - 0.5)) * smooth(5, 11, py + 5 * grain) * (1 - 0.75 * smooth(0.62, 0.85, gully));
+        snow[k] = smooth(0.36, 0.52, 1 / nl + 0.3 * (grain - 0.5)) * smooth(5, 11, py + 5 * grain) * (1 - 0.75 * smooth(0.62, 0.85, gully));
       }
       yield;
     }
     // sunlit terrain with open sky directly above: the crest line
     for (let k = W; k < SR * W; k += 1) rim[k] = depth[k] && !depth[k - W] && sun[k] > 0 ? 1 : 0;
 
-    // Behind the copy the slopes stay in the ridge's shadow, so the text never sits on lit snow.
-    // The shadow ends in the nearest valley of the skyline past the copy, where it can't read as a seam.
-    shadeTo = -99;
-    if (!portrait && clear[0]) {
-      const sky = (x) => {
-        for (let r = 0; r < SR; r += 1) if (depth[r * W + x]) return r;
-        return SR;
-      };
-      shadeTo = clamp(Math.round(clear[0]), 1, W - 2);
-      const dir = sky(shadeTo - 1) > sky(shadeTo) ? -1 : 1;
-      while (shadeTo > 0 && shadeTo < W - 1 && sky(shadeTo + dir) >= sky(shadeTo)) shadeTo += dir;
-    }
-
-    // The sun rises just above the skyline in the gap between the copy and the index.
-    const skyline = (x) => {
-      for (let r = 0; r < SR; r += 1) if (depth[r * W + x]) return refY(r);
-      return SHORE;
-    };
-    const sunCol = portrait ? Math.round(W * 0.62) : clamp(Math.round(clear[0] + (clear[2] - clear[0]) * 0.8), 0, W - 1);
-    SUN[0] = refX(sunCol);
-    SUN[1] = Math.min(...[-3, -1, 0, 1, 3].map((d) => skyline(clamp(sunCol + Math.round(d * R), 0, W - 1)))) - 2.2;
-
     // --- the far shore's treeline ---
     for (let x = 0; x < W; x += 1) treeTop[x] = SHORE - 0.6 - 1.2 * fbm2(refX(x) * 0.06, 2.3, 2);
-    for (let tx = -2; tx < 202; tx += 1.6 + hash2(tx * 9, 7) * 2.2) {
-      const tip = SHORE - 2.6 - hash2(tx * 3, 8) * 4 - 1.5 * smooth(60, 0, tx);
-      const slope = 1.1 + hash2(tx * 5, 9) * 0.5;
-      for (let x = 0; x < W; x += 1) {
-        const d = Math.abs(refX(x) - tx);
-        if (d < 6) treeTop[x] = Math.min(treeTop[x], tip + d * slope);
+    for (let tx = X0 - 8; tx < X0 + W + 8; tx += 1.6 + hash2(Math.floor(tx * 9), 7) * 2.2) {
+      const tip = SHORE - 2.6 - hash2(Math.floor(tx * 3), 8) * 4 - 1.5 * smooth(60, 0, tx);
+      const slope = 1.1 + hash2(Math.floor(tx * 5), 9) * 0.5;
+      for (let x = Math.max(0, Math.floor(tx - X0 - 6)); x < Math.min(W, tx - X0 + 6); x += 1) {
+        treeTop[x] = Math.min(treeTop[x], tip + Math.abs(refX(x) - tx) * slope);
       }
     }
 
     // --- the lake: where each cell's reflected ray lands in the picture above ---
     for (let r = SR; r < H; r += 1) {
-      const y = refY(r);
-      const v = ((HZ - y) / 100) * K;
+      const v = ((HZ - refY(r)) / 100) * K;
       for (let x = 0; x < W; x += 1) {
         const u = ((refX(x) - 100) / 100) * K;
         const z = march(u, -v, -CAM);
         const vs = -v - (z ? (2 * CAM) / z : 0);
-        let row = (HZ - (vs * 100) / K - Y0) * R - 0.5;
+        let row = HZ - (vs * 100) / K - Y0 - 0.5;
         const mirror = 2 * SR - 1 - r; // the treeline stands on the shore
-        if (Y0 + (mirror + 0.5) / R >= treeTop[x]) row = mirror;
+        if (refY(mirror) >= treeTop[x]) row = mirror;
         src[(r - SR) * W + x] = row;
       }
       yield;
@@ -691,7 +664,7 @@ function dawnScene(canvas) {
           if (Math.abs(dx) <= hw) {
             fg[k] = 2;
             // the outline catches the dawn sky: warm on the side facing the sun, cool on the other
-            const edge = hw - Math.abs(dx) < 1 / Math.min(R, 1.5);
+            const edge = hw - Math.abs(dx) < 1;
             const sunward = px < SUN[0] ? dx > 0 : dx < 0;
             fgShade[k] = edge ? (sunward ? 1 : 0.5) : 0.3 * hash2(x * 3, r * 5);
             fgRim[k] = edge ? smooth(70, 44, y) * (0.75 + 0.25 * hash2(x, r * 7)) : 0;
@@ -701,27 +674,29 @@ function dawnScene(canvas) {
       if (r % 16 === 15) yield;
     }
 
-    // --- mist, a wrapping sheet that drifts along the valley; thin high cloud ---
+    // --- mist, a wrapping sheet that drifts along the valley; thin high cloud (size-free, made once) ---
     if (!mist) {
-      mist = new Float32Array(MW * MR);
+      const m = new Float32Array(MW * MR);
       for (let r = 0; r < MR; r += 1) {
         for (let x = 0; x < MW; x += 1) {
           const y = r + M0;
           const q = fbm2(x * 0.0125, y * 0.1, 2, MW * 0.0125);
-          mist[r * MW + x] = fbm2(x * 0.025 + q * 1.4, y * 0.22 + q, 4, MW * 0.025);
+          m[r * MW + x] = fbm2(x * 0.025 + q * 1.4, y * 0.22 + q, 4, MW * 0.025);
         }
         yield;
       }
-      cloud = new Float32Array(CW * CR);
+      const c = new Float32Array(CW * CR);
       for (let r = 0; r < CR; r += 1) {
         for (let x = 0; x < CW; x += 1) {
           const y = r + 0.5;
           const q = fbm2(x * 0.0125, y * 0.12, 2, 8);
-          const c = fbm2(x * 0.025 + q * 2, y * 0.2 + q * 0.8, 4, 16);
-          cloud[r * CW + x] = smooth(0.52, 0.7, c - (0.06 * Math.abs(y - 18)) / 10) * smooth(5, 13, y) * smooth(33, 24, y);
+          const v = fbm2(x * 0.025 + q * 2, y * 0.2 + q * 0.8, 4, 16);
+          c[r * CW + x] = smooth(0.52, 0.7, v - (0.06 * Math.abs(y - 18)) / 10) * smooth(5, 13, y) * smooth(33, 24, y);
         }
         yield;
       }
+      mist = m;
+      cloud = c;
     }
 
     // a faint large-scale unevenness, so the open sky and the deep water never read flat
@@ -738,37 +713,31 @@ function dawnScene(canvas) {
         const k = r * W + x;
         const xr = refX(x);
         const east = smooth(20, 190, xr);
-        const dx = xr - SUN[0];
-        const dy = (y - SUN[1]) * 2.2;
-        const ds = Math.sqrt(dx * dx + dy * dy);
+        const ds = Math.hypot(xr - SUN[0], (y - SUN[1]) * 2.2);
         const low = v ** 1.9;
-        // indigo overhead, then a pale lilac and rose band behind the range
-        const veil = (hz[k] - 0.5) * 0.1 * (1 - v) * smooth(-12, 8, y); // above the reference frame the night is even
+        // indigo overhead, then a pale lilac and rose band behind the range;
+        // above the original frame the night is even, so no contours appear
+        const veil = (hz[k] - 0.5) * 0.1 * (1 - v) * smooth(-12, 8, y);
         skyR[k] = 0.03 + veil + low * (0.56 + 0.2 * east);
         skyG[k] = 0.04 + veil + low * (0.48 + 0.02 * east);
-        // never so dark in blue that the night snaps to the lake's green-black and draws contours
-        skyB[k] = Math.max(0.115, 0.13 + veil * 1.6 + low * (0.62 - 0.12 * east));
+        skyB[k] = 0.13 + veil * 1.6 + low * (0.62 - 0.12 * east);
         glowA[k] = Math.exp(-ds / 6) * 0.65 + Math.exp(-ds / 15) * 0.2 + Math.exp(-ds / 50) * 0.1;
-        // a few stars still out in the west, one per reference cell at most
-        const sx = Math.floor(xr);
-        const sy = Math.floor(y * 3);
-        if (y < 34 && hash2(sx, sy + 11) > 0.985 && Math.floor(X0 + x / R) !== Math.floor(X0 + (x - 1) / R) && Math.floor(Y0 + r / R) !== Math.floor(Y0 + (r - 1) / R)) {
-          starAt[k] = 1.5 + hash2(sx, sy) * 3 + hash2(sy, sx) * 100;
-        }
+        // stars, thinning toward the sun and gone where the dawn is bright
+        const sy = Math.floor(y);
+        if (y < 34 && hash2(Math.floor(xr), sy * 3 + 11) > 0.985) starAt[k] = 1.5 + hash2(Math.floor(xr), sy) * 3 + hash2(sy, Math.floor(xr)) * 100;
       }
     }
   }
 
-  const paint = (px) => {
-    const glow = RM ? 1 : 1 - (1 - clamp((performance.now() - born) / 1800, 0, 1)) ** 3;
-    // The dawn loop: blue first light warming to gold and back, never a jump.
+  const shade = () => {
+    const glow = RM ? 1 : 1 - (1 - clamp((performance.now() - born) / 2000, 0, 1)) ** 3;
+    // The dawn loop: rose first light warming to gold and back, never a jump.
     const phase = 0.5 - 0.5 * Math.cos((t / 180) * Math.PI * 2);
     const warm = 0.25 + 0.5 * phase;
     const line = 10 - 4 * phase; // the sunlit line creeps down the slopes
     const drift = t * 1.1;
     const pulse = 1 + 0.06 * Math.sin((t / 8) * Math.PI * 2); // the sun's glow breathes
     for (let x = 0; x < W; x += 1) wisp[x] = noise2((refX(x) + drift * 0.6) * 0.06, 3.7);
-    const lr = 1;
     const lg = mix(0.6, 0.8, warm);
     const lb = mix(0.55, 0.4, warm);
 
@@ -782,18 +751,17 @@ function dawnScene(canvas) {
         let cr = skyR[k] + gl;
         let cg = skyG[k] + gl * gg;
         let cb = skyB[k] + gl * (gg - 0.22);
-        let fl = 0.21 * smooth(-30, 10, y); // the high sky thins to the page's night
+        let fl = 0.21 * smooth(-40, 0, y); // the high sky thins out to the page's night
         const z = depth[k];
         if (z) {
           const sn = snow[k];
-          const shade = clamp((shadeTo + 3 - x) / 6, 0, 1) * clamp((clear[1] - r) / 4, 0, 1);
-          const lit = sun[k] * smooth(line, line + 7, alt[k]) * glow * (1 - shade);
+          const lit = sun[k] * smooth(line, line + 7, alt[k]) * glow;
           const amb = (0.55 + 0.45 * up[k]) * (0.55 + 0.5 * smooth(4, 34, alt[k]));
           // snow: deep blue in shadow, rose to gold in the sun, ending sharply
           const sl = smooth(0.08, 0.24, lit);
           const gold = clamp(0.6 * smooth(0.25, 0.8, lit) + 0.5 * smooth(14, 36, alt[k]), 0, 1);
           const br = 0.78 + 0.3 * lit;
-          const sr = mix(0.13 * amb, lr * br, sl);
+          const sr = mix(0.13 * amb, br, sl);
           const sg = mix(0.17 * amb, mix(lg - 0.12, lg + 0.14, gold) * br, sl);
           const sb = mix(0.36 * amb, mix(lb + 0.02, lb + 0.12, gold) * br, sl);
           // rock: slate in shadow, warm umber in the sun
@@ -817,12 +785,13 @@ function dawnScene(canvas) {
             cg = mix(cg, mix(0.89, 0.95, warm), sl);
             cb = mix(cb, mix(0.76, 0.88, warm), sl);
           }
-          fl = mix(mix(0.42, 0.3, wood), 0.04, sl) * (1 - 0.5 * shade);
+          // the shadowed range still carries a dim blue screen; the woods drop to near black
+          fl = mix(mix(0.42, 0.3, wood), 0.04, sl);
         } else {
           const st = starAt[k];
           if (st) {
             const tw = 0.6 + 0.4 * Math.sin(t * (st % 5) + st);
-            const s = tw * smooth(150, 40, xr) * smooth(34, 6, y) * 0.75;
+            const s = tw * smooth(150, 40, xr) * smooth(34, 6, y) * 0.75 * glow;
             cr = Math.max(cr, s * 0.9);
             cg = Math.max(cg, s * 0.92);
             cb = Math.max(cb, s);
@@ -860,8 +829,7 @@ function dawnScene(canvas) {
         const mg = mix(0.46, 0.7, e) + near * 0.75;
         const mb = 0.7 + near * 0.5;
         if (y >= M0) {
-          const mrow = Math.min(MR - 1, Math.floor(y - M0));
-          const m = mist[mrow * MW + (((Math.floor(xr + drift) % MW) + MW) % MW)];
+          const m = mist[Math.min(MR - 1, Math.floor(y - M0)) * MW + (((Math.floor(xr + drift) % MW) + MW) % MW)];
           // a ragged top edge: the sheet heaves in long swells and small tufts
           const edge = 5 * (m - 0.5) + 4 * (wisp[x] - 0.5);
           const a = (0.3 + 0.7 * smooth(0.32, 0.64, m)) * smooth(M0 + 14, SHORE - 3, y + edge) * 0.6;
@@ -877,8 +845,7 @@ function dawnScene(canvas) {
           cg = 0.06 + 0.04 * s;
           cb = 0.1 + 0.05 * s;
           fl = 0;
-          const mrow = clamp(Math.floor(y - M0), 0, MR - 1);
-          const m = mist[mrow * MW + (((Math.floor(xr * 0.7 + drift * 1.9 + 211) % MW) + MW) % MW)];
+          const m = mist[clamp(Math.floor(y - M0), 0, MR - 1) * MW + (((Math.floor(xr * 0.7 + drift * 1.9 + 211) % MW) + MW) % MW)];
           const a = smooth(0.45, 0.72, m) * smooth(treeTop[x] + 1, SHORE, y) * 0.6;
           cr = mix(cr, mr, a);
           cg = mix(cg, mg, a);
@@ -901,9 +868,9 @@ function dawnScene(canvas) {
         const xr = refX(x);
         const w1 = noise2(xr * 0.045 + t * 0.06, y * 0.5 - t * 0.35);
         const w2 = noise2(xr * 0.12 - t * 0.1, y * 1.1 - t * 0.7);
-        const sway = ((w1 - 0.5) * (0.4 + 1.4 * d) + (w2 - 0.5) * 0.5) * R;
+        const sway = (w1 - 0.5) * (0.4 + 1.4 * d) + (w2 - 0.5) * 0.5;
         const sx = clamp(Math.round(x + sway), 0, W - 1);
-        const sr = clamp(Math.round(src[(r - SR) * W + x] + (w2 - 0.5) * 0.6 * d * R), 0, SR - 1);
+        const sr = clamp(Math.round(src[(r - SR) * W + x] + (w2 - 0.5) * 0.6 * d), 0, SR - 1);
         const sk = sr * W + sx;
         const refl = 0.68 - 0.32 * d;
         const w3 = noise2(xr * 0.03 + t * 0.04, y * 1.9 - t * 0.45);
@@ -919,8 +886,7 @@ function dawnScene(canvas) {
         let cb = 0.07 + deep * 1.6 + mix(grey, ab, 0.75) * refl * lift;
         // the sun's road
         const roadW = 1.5 + (y - SHORE) * 0.45;
-        const road = Math.exp(-(((xr - SUN[0]) / roadW) ** 2));
-        const glint = smooth(0.55, 0.85, w2) * road * (0.5 + 0.5 * warm) * glow;
+        const glint = smooth(0.55, 0.85, w2) * Math.exp(-(((xr - SUN[0]) / roadW) ** 2)) * (0.5 + 0.5 * warm) * glow;
         cr += glint;
         cg += glint * 0.8;
         cb += glint * 0.6;
@@ -928,7 +894,7 @@ function dawnScene(canvas) {
         FG[k] = cg;
         FB[k] = cb;
         floor[k] = 0.26;
-        fade[k] = smooth(H + 2 * R, H - 22 * R, r);
+        fade[k] = smooth(H + 2, H - 22, r);
         if (r === SR) {
           // a dark seam where the shore meets the water
           FR[k] = 0.06;
@@ -961,8 +927,23 @@ function dawnScene(canvas) {
       }
       fade[k] = 1;
     }
+  };
 
-    // Snap every cell to the palette: brightness in five dithered steps, colour from its hue.
+  // Every cell becomes a square lamp: its size is its brightness in four ordered-dither
+  // steps, its colour the palette entry nearest its hue. This is the original's halftone,
+  // drawn as pixels: dark ground between the lamps is what makes the light read as light.
+  const SIZES = [0, 0, 0, 0]; // lamp edge per step, set from the lamp pitch
+  const COVER = [0, 0.3, 0.6, 1];
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  const hero = canvas.parentElement;
+  let img = null;
+  let px32 = null;
+
+  const lampsOut = () => {
+    const pitch = lamp;
+    const rowStride = W * pitch;
+    px32.fill(GROUND);
     for (let r = 0; r < H; r += 1) {
       for (let x = 0; x < W; x += 1) {
         const k = r * W + x;
@@ -971,31 +952,21 @@ function dawnScene(canvas) {
         const cb = FB[k];
         const fl = floor[k];
         const peak = Math.max(cr, cg, cb, 1e-4);
-        const level = clamp(fl + (1 - fl) * POW[Math.min(2048, (peak * 1024) | 0)], 0, 1) * fade[k];
-        const stepN = clamp(Math.round(level * 4 + BAYER[(r & 3) * 4 + (x & 3)] - 0.5), 0, 4);
-        const p = k * 4;
-        let c = DAWN_GROUND;
-        if (stepN) {
-          const wantN = Math.min(1, (level + 0.06) / COVER[stepN]);
-          // A pixel can't shrink like a dot, so it dims by the area the dot would have covered;
-          // dim cells keep some darkness in the colour too, so shadows sit back in deep blues.
-          const s = (((0.3 + 0.7 * wantN) * mix(0.5, 1, smooth(0.08, 0.5, peak))) / peak) * COVER[stepN];
-          c = DAWN_PALETTE[nearest(clamp(cr * s, 0, 1), clamp(cg * s, 0, 1), clamp(cb * s, 0, 1))];
-        }
-        px[p] = c[0];
-        px[p + 1] = c[1];
-        px[p + 2] = c[2];
-        px[p + 3] = 255;
+        const level = clamp(fl + (1 - fl) * POW[Math.min(2048, (peak * 1024) | 0)], 0, 1) * fade[k] * veil[k];
+        const step = clamp(Math.round(level * 3 + DITHER[(r & 3) * 4 + (x & 3)]), 0, 3);
+        if (!step) continue;
+        const want = Math.min(1, (level + 0.06) / COVER[step]);
+        // dim cells keep some darkness in the colour too, so shadows sit back in deep blues
+        const s = ((0.3 + 0.7 * want) * mix(0.5, 1, smooth(0.08, 0.5, peak))) / peak;
+        const ink = INK[nearest(clamp(cr * s, 0, 1), clamp(cg * s, 0, 1), clamp(cb * s, 0, 1))];
+        const size = SIZES[step];
+        const o = (pitch - 1 - size) >> 1; // centred, with a one-pixel seam on the right and bottom
+        let p = (r * pitch + o) * rowStride + x * pitch + o;
+        for (let j = 0; j < size; j += 1, p += rowStride) px32.fill(ink, p, p + size);
       }
     }
   };
 
-  // The scene draws straight into a canvas one pixel per cell; CSS scales it up with
-  // pixelated sampling, so no full-resolution redraw happens on the main thread.
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return null;
-  const hero = canvas.parentElement;
-  let img = null;
   let size = "";
   let building = null;
   let pending = null;
@@ -1005,40 +976,65 @@ function dawnScene(canvas) {
     const w = hero.clientWidth;
     const h = hero.clientHeight;
     if (!w || !h) return;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    cell = Math.max(1, Math.round(clamp(Math.round(w / 360), 2, 5) * dpr)) / dpr; // CSS px per cell, whole device pixels
-    const cols = Math.ceil(w / cell);
-    const rows = Math.ceil(h / cell);
+    const portrait = h > w;
+    lamp = w >= 1000 ? 5 : 4;
+    SIZES[1] = lamp - 3;
+    SIZES[2] = lamp - 2;
+    SIZES[3] = lamp - 1;
+    const cols = Math.ceil(w / lamp);
+    const rows = Math.ceil(h / lamp);
+    // The sun rises in the open sky between the copy and the index (or right of centre on phones).
     const box = hero.getBoundingClientRect();
     const copy = hero.querySelector(".hero-copy");
-    const actions = hero.querySelector(".hero .actions");
-    let next = [0, 0, 0];
-    if (copy && actions) {
-      // Measure the ink, not the boxes: block elements stretch past their text.
+    const panel = hero.querySelector(".lab-index");
+    let at = w * (portrait ? 0.66 : 0.68);
+    if (!portrait && copy) {
       const range = document.createRange();
       const inkRight = (el) => {
         range.selectNodeContents(el);
         return range.getBoundingClientRect().right;
       };
       const right = Math.max(...[...copy.querySelectorAll("h1, .lede, .actions > *, .command")].map(inkRight)) - box.left;
-      const panel = hero.querySelector(".lab-index");
-      const panelLeft = panel?.offsetParent ? panel.getBoundingClientRect().left - box.left : w;
-      next = [Math.round((right + 24) / cell), Math.round((actions.getBoundingClientRect().bottom - box.top + 16) / cell), Math.round(panelLeft / cell)];
+      const left = panel?.offsetParent ? panel.getBoundingClientRect().left - box.left : w;
+      if (left - right > 60) at = right + (left - right) * 0.55;
     }
-    // The raymarch is the expensive part: only redo it when the grid or the copy really moved.
-    const key = `${cols}x${rows}:${next}`;
+    const sunAt = Math.round(at / lamp);
+    // Behind the smaller copy the lamps step back: fewer and smaller, never greyed, so the text reads
+    // over the scene while the colours stay pure.
+    const top = h - rows * lamp;
+    // [box, how far the lamps step back]: nearly clear night behind the copy, a lighter
+    // thinning behind the index so the valley still shows through it.
+    const boxes = [
+      ...(copy ? [...copy.querySelectorAll(".lede, .actions, .command")].map((el) => [el.getBoundingClientRect(), 0.7]) : []),
+      ...(panel?.offsetParent ? [[panel.getBoundingClientRect(), 0.4]] : []),
+    ];
+    const key = `${cols}x${rows}:${sunAt}:${boxes.map(([b]) => [b.left, b.top, b.right, b.bottom].map(Math.round)).join("/")}`;
     if (key === size) return;
     size = key;
-    clear = next;
     Object.assign(canvas.style, {
-      width: `${cols * cell}px`,
-      height: `${rows * cell}px`,
-      left: `${Math.floor((w - cols * cell) / 2)}px`,
-      top: `${Math.floor((h - rows * cell) / 2)}px`,
+      width: `${cols * lamp}px`,
+      height: `${rows * lamp}px`,
+      left: `${Math.floor((w - cols * lamp) / 2)}px`,
+      top: `${h - rows * lamp}px`,
     });
-    // The raymarch runs a slice per frame, so the page never stalls while the range is built;
-    // the finished scene fades in.
-    building = build(cols, rows);
+    // The raymarch runs a slice per frame, so the page never stalls; the finished scene fades in.
+    veil = new Float32Array(cols * rows).fill(1);
+    const soft = 9; // cells of falloff around each text block
+    for (const [b, depthOf] of boxes) {
+      const x0 = (b.left - box.left) / lamp;
+      const x1 = (b.right - box.left) / lamp;
+      const y0 = (b.top - box.top - top) / lamp;
+      const y1 = (b.bottom - box.top - top) / lamp;
+      for (let r = Math.max(0, Math.floor(y0 - soft)); r < Math.min(rows, Math.ceil(y1 + soft)); r += 1) {
+        for (let x = Math.max(0, Math.floor(x0 - soft)); x < Math.min(cols, Math.ceil(x1 + soft)); x += 1) {
+          const dx = Math.max(x0 - x, 0, x - x1);
+          const dy = Math.max(y0 - r, 0, r - y1);
+          const k = r * cols + x;
+          veil[k] = Math.min(veil[k], 1 - depthOf * smooth(soft, 0, Math.hypot(dx, dy)));
+        }
+      }
+    }
+    building = build(cols, rows, sunAt);
     img = null;
     canvas.classList.remove("is-ready");
     pending = [cols, rows];
@@ -1061,9 +1057,10 @@ function dawnScene(canvas) {
         if (building.next().done) {
           building = null;
           const [cols, rows] = pending;
-          canvas.width = cols;
-          canvas.height = rows;
-          img = ctx.createImageData(cols, rows);
+          canvas.width = cols * lamp;
+          canvas.height = rows * lamp;
+          img = ctx.createImageData(canvas.width, canvas.height);
+          px32 = new Uint32Array(img.data.buffer);
           born = performance.now() - (RM ? 0 : t * 1000);
           field.dirty = true;
           requestAnimationFrame(() => canvas.classList.add("is-ready"));
@@ -1074,7 +1071,8 @@ function dawnScene(canvas) {
     }
     const busy = advance(now);
     if (field.visible && field.dirty && img) {
-      paint(img.data);
+      shade();
+      lampsOut();
       ctx.putImageData(img, 0, 0);
       field.dirty = false;
     }

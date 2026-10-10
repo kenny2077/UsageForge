@@ -371,7 +371,8 @@ p {
   flex-direction: column;
   justify-content: center;
   min-height: 100svh;
-  padding: calc(var(--nav-h) + 24px) var(--gutter) clamp(40px, 7vh, 80px);
+  /* More room above than below, so the copy and the index sit a little under the middle. */
+  padding: calc(var(--nav-h) + 13vh) var(--gutter) 5vh;
   overflow: hidden;
   /* No-JavaScript sky: the same lamp board, lit by CSS gradients. */
   background:
@@ -404,16 +405,6 @@ p {
 /* With the scene on its way, the hero waits in plain night instead of the lamp board. */
 .js .hero {
   background: linear-gradient(180deg, #050816, #0b1024 62%, var(--night));
-}
-
-/* A quiet patch of night behind the copy keeps the text readable over the moving sky. */
-.hero::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  background: radial-gradient(48% 46% at 24% 50%, rgba(2, 6, 14, 0.6), rgba(2, 6, 14, 0.28) 55%, transparent 80%);
-  pointer-events: none;
 }
 
 .hero-inner {
@@ -451,7 +442,8 @@ p {
 /* On phones the copy fills the screen, so the hero grows a stage below it for the valley. */
 @media (max-aspect-ratio: 1/1) {
   .hero {
-    padding-bottom: 72vw;
+    padding-top: calc(var(--nav-h) + 32px);
+    padding-bottom: 80vw;
   }
 }
 
@@ -460,10 +452,12 @@ p {
   --bg: rgba(5, 12, 26, 0.82);
 }
 
-/* Solid, not frosted: a blur over the animated sky would be recomputed every frame. */
+/* A light veil, not frosted glass: the valley stays visible through it, and no blur
+   is recomputed over the moving sky every frame. */
 .lab-index {
   padding: 18px;
-  background: rgba(5, 12, 26, 0.88);
+  background: rgba(5, 12, 26, 0.42);
+  text-shadow: 0 1px 12px rgba(2, 6, 14, 0.95);
   box-shadow: inset 0 0 0 1px var(--line);
   clip-path: var(--chamfer);
 }
