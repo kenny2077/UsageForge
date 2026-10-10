@@ -419,6 +419,8 @@ const PEAKS = [
   const h = CAM + ((HZ - row) / 100) * K * z - 1.5;
   return [((sx - 100) / 100) * K * z, z, h, h * f, Math.cos(a), Math.sin(a)];
 });
+const RIPPLE_SPEED = 13; // reference cells a second
+const RIPPLE_LIFE = 3.2; // seconds
 const HMAX = Math.max(...PEAKS.map(([, , ph]) => ph)) + 5; // nothing stands taller, crags included
 
 function terrain(x, z) {
@@ -537,6 +539,7 @@ function dawnScene(canvas) {
 
   let last = 0;
   let t = RM ? 95 : 0;
+  const ripples = []; // [{ x, y, t0 }] in reference cells and scene seconds
   let born = performance.now();
 
   const refX = (x) => X0 + x + 0.5;
@@ -549,7 +552,10 @@ function dawnScene(canvas) {
     // the view reaches past its sides: the valley seen from further back. The sun is placed
     // where the copy and the index leave the sky open.
     X0 = Math.round(SUN[0] - sunAt);
-    Y0 = 100 - H;
+    // The shore sits a little above the hero's lower third, so the lake below it is deep
+    // enough to hold the whole range's reflection.
+    Y0 = SHORE - (H > W ? H - 58 : Math.round(H * 0.64));
+    const lift = Y0 + H - 100; // how far the hero reaches below the original frame
     SR = SHORE - Y0;
     const N = W * H;
     depth = new Float32Array(SR * W);
@@ -642,20 +648,26 @@ function dawnScene(canvas) {
     }
 
     // --- the near pines and the bank they stand on ---
-    const PINES = [[9, 5, 1.15], [20, 38, 0.85], [32, 66, 0.5], [192, 10, 1.15], [181, 40, 0.75], [204, 26, 1]];
+    // The near pines frame the view's own edges, as they frame the original's.
+    const PINES = [[9, 5, 1.15], [20, 38, 0.85], [32, 66, 0.5], [192, 10, 1.15], [181, 40, 0.75], [204, 26, 1]].map(([c, tip, s]) => [
+      c < 100 ? X0 + c * 0.7 : X0 + W - (200 - c) * 0.7,
+      tip,
+      s,
+    ]);
     for (let r = 0; r < H; r += 1) {
       const y = refY(r);
       for (let x = 0; x < W; x += 1) {
         const k = r * W + x;
         const xr = refX(x);
-        const bankL = 88 + 14 * smooth(0, 52, xr) + 2 * fbm2(xr * 0.2, 1, 2);
-        const bankR = 90 + 12 * smooth(200, 160, xr) + 2 * fbm2(xr * 0.2, 4, 2);
+        // the near banks stay in the bottom corners, however deep the lake runs
+        const bankL = lift + 88 + 14 * smooth(0, 52, xr) + 2 * fbm2(xr * 0.2, 1, 2);
+        const bankR = lift + 90 + 12 * smooth(200, 160, xr) + 2 * fbm2(xr * 0.2, 4, 2);
         if (y > bankL || y > bankR) {
           fg[k] = 1;
           fgShade[k] = 0.15 * hash2(x, r);
         }
         for (const [px, tip, s] of PINES) {
-          const d = y - tip;
+          const d = y - tip - lift; // the near pines stand on the banks, so they move down with them
           if (d < 0) continue;
           const tier = 3.4 * s;
           const f = d / tier - Math.floor(d / tier);
@@ -868,7 +880,24 @@ function dawnScene(canvas) {
         const xr = refX(x);
         const w1 = noise2(xr * 0.045 + t * 0.06, y * 0.5 - t * 0.35);
         const w2 = noise2(xr * 0.12 - t * 0.1, y * 1.1 - t * 0.7);
-        const sway = (w1 - 0.5) * (0.4 + 1.4 * d) + (w2 - 0.5) * 0.5;
+        // rings from a tap: each pushes the reflection aside and catches the sky on its crest
+        let push = 0;
+        let crest = 0;
+        for (const rp of ripples) {
+          const age = t - rp.t0;
+          const reach = age * RIPPLE_SPEED + 2;
+          const dx = xr - rp.x;
+          if (Math.abs(dx) > reach) continue;
+          const dist = Math.hypot(dx, (y - rp.y) * 2.4); // seen at a low angle, the rings are flat ellipses
+          for (let n = 0; n < 3; n += 1) {
+            const ring = Math.abs(dist - (age * RIPPLE_SPEED - n * 5));
+            if (ring >= 2.2 || age * RIPPLE_SPEED - n * 5 < 0) continue;
+            const k = (1 - ring / 2.2) * (1 - age / RIPPLE_LIFE) * (1 - n * 0.25);
+            push += k * 2.4 * Math.sign(dx || 1);
+            crest += k;
+          }
+        }
+        const sway = (w1 - 0.5) * (0.4 + 1.4 * d) + (w2 - 0.5) * 0.5 + push;
         const sx = clamp(Math.round(x + sway), 0, W - 1);
         const sr = clamp(Math.round(src[(r - SR) * W + x] + (w2 - 0.5) * 0.6 * d), 0, SR - 1);
         const sk = sr * W + sx;
@@ -887,9 +916,9 @@ function dawnScene(canvas) {
         // the sun's road
         const roadW = 1.5 + (y - SHORE) * 0.45;
         const glint = smooth(0.55, 0.85, w2) * Math.exp(-(((xr - SUN[0]) / roadW) ** 2)) * (0.5 + 0.5 * warm) * glow;
-        cr += glint;
-        cg += glint * 0.8;
-        cb += glint * 0.6;
+        cr += glint + crest * 0.5;
+        cg += glint * 0.8 + crest * 0.52;
+        cb += glint * 0.6 + crest * 0.68;
         FR[k] = cr;
         FG[k] = cg;
         FB[k] = cb;
@@ -1046,6 +1075,7 @@ function dawnScene(canvas) {
     if (now - last < 15) return true; // at most ~60 fps, even on fast displays
     last = now;
     t = (now - born) / 1000;
+    while (ripples.length && t - ripples[0].t0 > RIPPLE_LIFE) ripples.shift();
     field.dirty = true;
     return true;
   };
@@ -1078,6 +1108,19 @@ function dawnScene(canvas) {
     }
     return busy;
   };
+
+  // Tap or click the lake to drop a stone in it. Text, buttons and the index keep their clicks.
+  if (!RM) {
+    hero.addEventListener("pointerdown", (event) => {
+      if (!img || event.target.closest("a, button, h1, p, .command, .lab-index")) return;
+      const r = canvas.getBoundingClientRect();
+      const x = (event.clientX - r.left) / lamp;
+      const row = (event.clientY - r.top) / lamp;
+      if (row < SR + 1 || row >= H) return;
+      if (ripples.length > 7) ripples.shift();
+      ripples.push({ x: X0 + x, y: Y0 + row, t0: t });
+    });
+  }
 
   // Rebuilding raymarches the range, so a window being dragged waits until it settles.
   let resizeTimer = 0;

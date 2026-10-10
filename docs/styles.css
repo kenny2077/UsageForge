@@ -366,6 +366,8 @@ p {
 
 .hero {
   position: relative;
+  /* Above the statement's overlap, so the lake and the hero buttons keep their clicks. */
+  z-index: 2;
   isolation: isolate;
   display: flex;
   flex-direction: column;
@@ -443,7 +445,7 @@ p {
 @media (max-aspect-ratio: 1/1) {
   .hero {
     padding-top: calc(var(--nav-h) + 32px);
-    padding-bottom: 80vw;
+    padding-bottom: 108vw;
   }
 }
 
