@@ -64,6 +64,15 @@ echo '{"payload":{"rate_limits":{"primary":{"resets_at":1},"secondary":{"used_pe
 rm "$T/state/codex.backoff"
 lk tick;  check "3 4" "codex weekly cap hit should not ping"
 
+# Switched Codex accounts: the newest event wins, even when an older account's window ends later.
+lim() { echo '{"timestamp":"'$1'","payload":{"rate_limits":{"primary":{"used_percent":'$2',"resets_at":'$3'},"secondary":{"used_percent":5,"resets_at":'$WEEK'}}}}'; }
+{ lim 2026-10-10T19:10:00Z 93 $((FUTURE + 3600)); } >"$S/rollout-old.jsonl"; sleep 1
+{ lim 2026-10-10T19:23:00Z 86 $FUTURE; echo '{"timestamp":"2026-10-10T19:24:00Z","payload":{"rate_limits":{"primary":null}}}'; } >"$S/rollout-new.jsonl"
+echo $((FUTURE + 3600)) >"$T/state/codex.reset"
+HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson f $FUTURE '.tools.codex.five_hour == 86 and .tools.codex.reset == $f' >/dev/null ||
+  { echo "FAIL: stale Codex account shown"; exit 1; }
+rm -f "$S/rollout-old.jsonl"; echo 1 >"$T/state/codex.reset"
+
 # Unreadable Codex logs must not mean "ping every tick": our own last ping is the floor.
 echo nolog >"$T/codex.mode"; rm -rf "$T/home/.codex/sessions"; mkdir -p "$T/home/.codex/sessions"
 lk tick;  check "3 5" "codex with no logs should ping once"
@@ -171,8 +180,9 @@ fi
 python3 ui/server.py ./usageforge --no-open --port 4598 >/dev/null 2>&1 & P=$!; sleep 1
 python3 ui/server.py ./usageforge --no-open --port 4598 2>&1 | grep -q "already running" || { kill $P; echo "FAIL: second ui"; exit 1; }
 kill $P; wait $P 2>/dev/null || true
-# The pixel dawn: a valid PNG, and 14 terminal rows for 28 pixels.
+# The dawn: baked frames load, and a narrow terminal gets a crop of the asked size.
 python3 -B -c "import sys; sys.path.insert(0, 'ui'); import dawn
-assert dawn.png(8, 4)[:8] == b'\\x89PNG\\r\\n\\x1a\\n'
-assert dawn.ansi(64, 28).count(chr(10)) == 14" || { echo "FAIL: dawn"; exit 1; }
+assert len(dawn.frames()) == 16
+assert dawn.ansi(80, 30).count(chr(10)) == 30 and all(len(r) == 80 for r in dawn.cells(80, 30))
+assert '●' in dawn.markup()" || { echo "FAIL: dawn"; exit 1; }
 echo PASS

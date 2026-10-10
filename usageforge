@@ -13,7 +13,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.3.0
+VERSION=3.4.0
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -96,11 +96,12 @@ weekly_pct() {
 
 # ---------- Reading the windows ----------
 
-# Newest rate_limits Codex wrote to its own session logs.
+# Newest rate_limits Codex wrote to its own session logs. Newest by time, not the latest reset:
+# after switching accounts, the old account's window can end later than the current one's.
 codex_limits() {
-  find "$SESSIONS" -name 'rollout-*.jsonl' -mtime -8 -exec ls -t {} + 2>/dev/null | head -3 |
+  find "$SESSIONS" -name 'rollout-*.jsonl' -mtime -8 -exec ls -t {} + 2>/dev/null | head -5 |
     while IFS= read -r f; do grep -h '"rate_limits"' "$f"; done |
-    jq -sc 'map(.payload.rate_limits) | max_by(.primary.resets_at // 0) // {}' 2>/dev/null
+    jq -sc 'map(select(.payload.rate_limits.primary != null)) | max_by(.timestamp // "") | .payload.rate_limits // {}' 2>/dev/null
 }
 
 # Live Claude usage from Claude Code's own `/usage` command: it runs locally and sends no message,
@@ -137,11 +138,12 @@ reset_at() {
   case $1 in
     claude) int "$(cat "$STATE/claude.reset" 2>/dev/null)" ;;
     # Codex logs its own limits, so manual usage counts too. Weekly cap hit -> wait for the weekly reset.
-    # Our own last ping (codex.reset) is the floor, so unreadable logs can never mean "ping every tick".
+    # An open window in the log wins (it follows account switches); otherwise our own last ping,
+    # so unreadable logs can never mean "ping every tick".
     codex) local log saved
            log=$(int "$(codex_limits | jq 'if (.secondary.used_percent // 0) >= 100 then .secondary.resets_at else .primary.resets_at end // 0' 2>/dev/null)")
            saved=$(int "$(cat "$STATE/codex.reset" 2>/dev/null)")
-           [ "$log" -gt "$saved" ] && echo "$log" || echo "$saved" ;;
+           [ "$log" -gt "$(now)" ] && echo "$log" || echo "$saved" ;;
     *) echo 0 ;;
   esac
 }

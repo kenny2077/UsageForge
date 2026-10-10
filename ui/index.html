@@ -250,8 +250,10 @@ details.adv[open] summary::after { content: "−"; }
 .guide-dim.full { background: rgba(2, 6, 14, 0.74); pointer-events: auto; }
 .guide-spot { position: fixed; z-index: 60; pointer-events: none; box-shadow: 0 0 0 200vmax rgba(2, 6, 14, 0.72), inset 0 0 0 2px var(--amber); }
 .guide-card { position: fixed; z-index: 61; width: min(380px, calc(100vw - 32px)); background: var(--night-3); box-shadow: inset 0 0 0 1px var(--line-2), 0 30px 60px -24px #000; clip-path: var(--chamfer-lg); animation: rise 0.35s var(--ease); }
-.guide-card.wide { width: min(540px, calc(100vw - 32px)); }
-.guide-card .art { display: block; width: 100%; height: auto; image-rendering: pixelated; }
+.guide-card.wide { --w: min(640px, calc(100vw - 32px)); width: var(--w); }
+/* The product page's dawn as text: 200 columns of dots, each character as tall as two are wide. */
+.guide-card .art { margin: 0; padding: 10px 0 4px; overflow: hidden; background: #090c18; font: calc(var(--w) / 121) / 1.2 var(--mono); letter-spacing: 0; white-space: pre; user-select: none; }
+.guide-card .art i { font-style: normal; }
 .guide-card .body { padding: 20px 22px; }
 .guide-card .step { margin-bottom: 10px; color: var(--amber); font: 500 11px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; }
 .guide-card h3 { margin-bottom: 8px; font-size: 28px; }
@@ -813,8 +815,28 @@ function openGuide() {
   showStep(0);
 }
 
+// The dawn, drawn in dots, its lake rippling back and forth at 10 frames a second (still for reduced motion).
+let dawnFrames = null;
+function dawnArt(g) {
+  const pre = el("pre", "art");
+  pre.setAttribute("role", "img");
+  pre.setAttribute("aria-label", "Snow peaks at dawn above a still mountain lake, drawn in dots");
+  dawnFrames ||= fetch("/dawn.json").then((r) => r.json()).then((d) => d.frames);
+  dawnFrames.then((frames) => {
+    let i = 0, step = 1;
+    pre.innerHTML = frames[0];
+    if (!pre.isConnected || matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    g.play = setInterval(() => {
+      if (i + step < 0 || i + step >= frames.length) step = -step;
+      pre.innerHTML = frames[(i += step)];
+    }, 100);
+  }).catch(() => pre.remove());
+  return pre;
+}
+
 function closeGuide(done = true) {
   if (!guide) return;
+  clearInterval(guide.play);
   guide.dim.remove(); guide.spot.remove(); guide.card.remove(); guide = null;
   if (done) { try { localStorage.setItem("uf-guide", "done"); } catch {} document.getElementById("guide-btn").focus(); }
 }
@@ -824,7 +846,8 @@ function showStep(i) {
   g.i = i;
   g.card.classList.toggle("wide", !!s.art);
   g.card.innerHTML = "";
-  if (s.art) g.card.append(Object.assign(new Image(120, 44), { className: "art", src: "/dawn.png", alt: "Pixel-art mountains at dawn over a lake" }));
+  clearInterval(g.play);
+  if (s.art) g.card.append(dawnArt(g));
   const body = el("div", "body");
   const title = el("h3", "", s.title); title.id = "guide-title";
   body.append(el("p", "step", s.art ? "Quick guide · about a minute" : `${i} of ${g.steps.length - 1}`), title, el("p", "text", s.text));
