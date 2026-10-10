@@ -1006,7 +1006,9 @@ function dawnScene(canvas) {
     const h = hero.clientHeight;
     if (!w || !h) return;
     const portrait = h > w;
-    lamp = w >= 1000 ? 5 : 4;
+    // About 210 lamps across on wide screens: nearly the original's framing, with the peaks
+    // standing tall, while the ridges still run a little past its edges.
+    lamp = portrait ? 4 : clamp(Math.round(w / 210), 4, 8);
     SIZES[1] = lamp - 3;
     SIZES[2] = lamp - 2;
     SIZES[3] = lamp - 1;
