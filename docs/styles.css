@@ -369,9 +369,9 @@ p {
   isolation: isolate;
   display: flex;
   flex-direction: column;
-  justify-content: flex-end;
+  justify-content: center;
   min-height: 100svh;
-  padding: calc(var(--nav-h) + 48px) var(--gutter) clamp(56px, 9vh, 104px);
+  padding: calc(var(--nav-h) + 24px) var(--gutter) clamp(40px, 7vh, 80px);
   overflow: hidden;
   /* No-JavaScript sky: the same lamp board, lit by CSS gradients. */
   background:
@@ -390,20 +390,36 @@ p {
   height: 100%;
 }
 
+/* One canvas pixel per scene cell, scaled up crisp by the compositor. It fades in once built. */
+.hero-field {
+  image-rendering: pixelated;
+  opacity: 0;
+  transition: opacity 0.9s var(--ease);
+}
+
+.hero-field.is-ready {
+  opacity: 1;
+}
+
+/* With the scene on its way, the hero waits in plain night instead of the lamp board. */
+.js .hero {
+  background: linear-gradient(180deg, #050816, #0b1024 62%, var(--night));
+}
+
+/* A quiet patch of night behind the copy keeps the text readable over the moving sky. */
 .hero::after {
   content: "";
   position: absolute;
-  inset: auto 0 0;
+  inset: 0;
   z-index: -1;
-  height: 42%;
-  background: linear-gradient(180deg, transparent, rgba(5, 12, 26, 0.86) 62%, var(--night));
+  background: radial-gradient(48% 46% at 24% 50%, rgba(2, 6, 14, 0.6), rgba(2, 6, 14, 0.28) 55%, transparent 80%);
   pointer-events: none;
 }
 
 .hero-inner {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
-  align-items: end;
+  align-items: center;
   gap: 48px;
   will-change: transform;
 }
@@ -414,7 +430,7 @@ p {
 
 .hero h1 {
   max-width: 13ch;
-  font-size: clamp(54px, 8.2vw, 132px);
+  font-size: clamp(54px, 7vw, 112px);
   line-height: 0.9;
   text-shadow: 0 2px 40px rgba(2, 6, 14, 0.6);
 }
@@ -432,12 +448,23 @@ p {
   margin-top: 34px;
 }
 
+/* On phones the copy fills the screen, so the hero grows a stage below it for the valley. */
+@media (max-aspect-ratio: 1/1) {
+  .hero {
+    padding-bottom: 72vw;
+  }
+}
+
+/* The sky moves behind the hero actions, so the ghost buttons carry their own night. */
+.hero .button-ghost {
+  --bg: rgba(5, 12, 26, 0.82);
+}
+
+/* Solid, not frosted: a blur over the animated sky would be recomputed every frame. */
 .lab-index {
   padding: 18px;
-  background: rgba(5, 12, 26, 0.72);
+  background: rgba(5, 12, 26, 0.88);
   box-shadow: inset 0 0 0 1px var(--line);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
   clip-path: var(--chamfer);
 }
 
@@ -1033,11 +1060,6 @@ pre {
   font-size: 0.88em;
 }
 
-/* Top-align the forge index with the headline, not the bottom of the copy. */
-.hero-inner .lab-index {
-  align-self: start;
-  margin-top: 64px;
-}
 
 /* Install command: one line, copyable. */
 .command {
