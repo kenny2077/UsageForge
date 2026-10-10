@@ -1,4 +1,4 @@
-The hero scene in script.js, and the frames in ui/dawn.bin (baked by ui/bake-dawn.mjs), adapt "alpine dawn" from ascii.rest by bas3line
+The hero scene in script.js adapts "alpine dawn" from ascii.rest by bas3line
 (github.com/bas3line/ascii), used under the MIT License:
 
 MIT License

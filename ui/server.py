@@ -79,8 +79,8 @@ def icon(tool):
 
 
 @lru_cache(maxsize=1)
-def dawn_frames():
-    return json.dumps({"frames": [dawn.markup(f) for f in range(len(dawn.frames()))]}).encode()
+def dawn_png():
+    return dawn.png(120, 44)
 
 
 def hello(url):
@@ -94,20 +94,15 @@ def hello(url):
         return f"\x1b[{code}m{text}\x1b[0m"
     TITLE, ACCENT, OK, WARN, BAD, MUTED = "1", "1;33", "36", "33", "31", "2"
 
-    # As much of the picture as fits. With room it stays on screen above the setup check;
-    # in a short window the check scrolls it up, after it has played.
     size = shutil.get_terminal_size()
-    room = size.lines - 24
-    cols, lines = min(dawn.W, size.columns - 4), min(dawn.H // 2 - 3, room if room >= 18 else size.lines - 2)
-    if cols >= 60 and lines >= 12:
-        # About a second of the lake moving, then it holds still.
-        shots = [dawn.ansi(cols, lines, f, true) for f in range(len(dawn.frames()))]
-        for i, shot in enumerate(shots):
+    if size.columns >= 68:
+        # A five-second dawn would be a wait; this one is under a second.
+        for i in range(9):
             if i:
-                sys.stdout.write(f"\x1b[{lines}A")
-            sys.stdout.write(shot)
+                sys.stdout.write("\x1b[14A")
+            sys.stdout.write(dawn.ansi(64, 28, 0.25 + i * 0.75 / 8, true))
             sys.stdout.flush()
-            time.sleep(1 / 15)
+            time.sleep(0.04)
     print()
     print("  " + ink(TITLE, "UsageForge") + ink(MUTED, "  starts your 5-hour window on your schedule"))
     print()
@@ -168,8 +163,8 @@ class Handler(BaseHTTPRequestHandler):
             f = (ASSETS / path[len("/assets/"):]).resolve()
             if ASSETS in f.parents and f.is_file() and f.suffix in TYPES:
                 return self.reply(200, f.read_bytes(), TYPES[f.suffix])
-        if path == "/dawn.json":
-            return self.reply(200, dawn_frames())
+        if path == "/dawn.png":
+            return self.reply(200, dawn_png(), "image/png")
         if path.startswith("/icons/") and path.endswith(".png"):
             png = icon(path[len("/icons/"):-len(".png")])
             if png:
