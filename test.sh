@@ -166,6 +166,20 @@ rm -f "$T/state/claude.limits"; echo "$R" >"$T/state/claude.reset"
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json >/dev/null
 [ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: 0% /usage dropped the ping's reset ($(cat "$T/state/claude.reset") vs $R)"; exit 1; }
 
+# Codex out of usage: the turn logs an error, not new numbers. Don't retry; show the window as full.
+lim 2026-10-10T19:23:00Z 92 $FUTURE >"$S/rollout-new.jsonl"; : >"$T/codex.calls"
+cat >"$T/bin/codex" <<EOF
+#!/bin/sh
+[ "\$2" = --help ] && exit 0
+echo x >>"$T/codex.calls"
+echo '{"timestamp":"2026-10-10T21:07:06.672Z","payload":{"type":"task_complete","error":{"message":"limit","codex_error_info":"usage_limit_exceeded"}}}' >"$S/rollout-limit.jsonl"
+echo "ERROR: You've hit your usage limit. Try again at 5:17 PM." >&2; exit 1
+EOF
+! lk ping codex || { echo "FAIL: out-of-usage ping should exit non-zero"; exit 1; }
+[ "$(calls codex)" = 1 ] || { echo "FAIL: out-of-usage ping should not retry"; exit 1; }
+HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson f $FUTURE '.tools.codex.five_hour == 100 and .tools.codex.reset == $f' >/dev/null ||
+  { echo "FAIL: Codex out of usage should show 100%"; exit 1; }
+
 ! lk schedule 25:00 || { echo "FAIL: bad time accepted"; exit 1; }
 if [ "$(uname)" = Darwin ]; then   # plist must stay valid even with XML-special chars in paths
   printf '#!/bin/sh\nexit 0\n' >"$T/bin/launchctl"; chmod +x "$T/bin/launchctl"

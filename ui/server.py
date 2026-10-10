@@ -14,6 +14,7 @@ import secrets
 import shutil
 import subprocess
 import sys
+import textwrap
 import time
 import webbrowser
 from functools import lru_cache
@@ -88,13 +89,17 @@ def hello(url):
         return print(f"UsageForge control panel: {url}  (Ctrl+C to quit)")
     true = os.environ.get("COLORTERM") in ("truecolor", "24bit")
 
-    def ink(hexc, text, bold=False):
-        return f"\x1b[{'1;' if bold else ''}{dawn.sgr(hexc, truecolor=true)}m{text}\x1b[0m"
+    # The terminal's own named colours, so the text reads on light and dark themes alike.
+    def ink(code, text):
+        return f"\x1b[{code}m{text}\x1b[0m"
+    TITLE, ACCENT, OK, WARN, BAD, MUTED = "1", "1;33", "36", "33", "31", "2"
 
-    # As much of the picture as fits, leaving room for the setup check below it.
+    # As much of the picture as fits. With room it stays on screen above the setup check;
+    # in a short window the check scrolls it up, after it has played.
     size = shutil.get_terminal_size()
-    cols, lines = min(dawn.W, size.columns - 4), min(dawn.H // 2 - 3, size.lines - 24)
-    if cols >= 60 and lines >= 18:
+    room = size.lines - 24
+    cols, lines = min(dawn.W, size.columns - 4), min(dawn.H // 2 - 3, room if room >= 18 else size.lines - 2)
+    if cols >= 60 and lines >= 12:
         # About a second of the lake moving, then it holds still.
         shots = [dawn.ansi(cols, lines, f, true) for f in range(len(dawn.frames()))]
         for i, shot in enumerate(shots):
@@ -104,24 +109,23 @@ def hello(url):
             sys.stdout.flush()
             time.sleep(1 / 15)
     print()
-    print("  " + ink("#eaf2f8", "UsageForge", True) + ink("#93a7bb", "  starts your 5-hour window on your schedule"))
+    print("  " + ink(TITLE, "UsageForge") + ink(MUTED, "  starts your 5-hour window on your schedule"))
     print()
-    print("  " + ink("#ffb547", "Setup", True))
+    print("  " + ink(ACCENT, "Setup"))
     for line in cli("doctor", timeout=60).stdout.splitlines()[1:]:
         mark = line.strip()[:1]
         if line.startswith("  "):
-            color = {"✓": "#4fe3d0", "!": "#ffb547", "✗": "#ff6f7d"}.get(mark, "#c8d6e4")
-            print("    " + ink(color, mark) + ink("#c8d6e4", line.strip()[1:]))
+            print("    " + ink({"✓": OK, "!": WARN, "✗": BAD}.get(mark, "0"), mark) + line.strip()[1:])
         elif line.startswith(("All good", "Fix the")):
-            print("  " + ink("#4fe3d0" if line.startswith("All") else "#ff6f7d", line, True))
+            print("  " + ink("1;" + (OK if line.startswith("All") else BAD), line))
         elif line.startswith("Tip"):
-            print("  " + ink("#62778d", line))
+            print(ink(MUTED, textwrap.fill(line, size.columns - 2, initial_indent="  ", subsequent_indent="  ")))
         else:
-            print("  " + ink("#eaf2f8", line))
+            print("  " + ink(TITLE, line))
     print()
-    print("  " + ink("#ffb547", "Panel", True) + "  " + ink("#4fe3d0", url, True) + ink("#93a7bb", "  opening in your browser"))
-    print("  " + ink("#62778d", "New here? The panel starts with a short guide. Ctrl+C closes the panel;"))
-    print("  " + ink("#62778d", "the background check keeps running without it."))
+    print("  " + ink(ACCENT, "Panel") + "  " + ink("1;" + OK, url) + ink(MUTED, "  opening in your browser"))
+    print("  " + ink(MUTED, "New here? The panel starts with a short guide. Ctrl+C closes the panel;"))
+    print("  " + ink(MUTED, "the background check keeps running without it."))
     print()
 
 

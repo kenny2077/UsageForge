@@ -13,7 +13,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.4.0
+VERSION=3.4.1
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -98,10 +98,17 @@ weekly_pct() {
 
 # Newest rate_limits Codex wrote to its own session logs. Newest by time, not the latest reset:
 # after switching accounts, the old account's window can end later than the current one's.
+# Hitting the limit logs an error, not new numbers: then the window counts as full until it resets.
 codex_limits() {
   find "$SESSIONS" -name 'rollout-*.jsonl' -mtime -8 -exec ls -t {} + 2>/dev/null | head -5 |
-    while IFS= read -r f; do grep -h '"rate_limits"' "$f"; done |
-    jq -sc 'map(select(.payload.rate_limits.primary != null)) | max_by(.timestamp // "") | .payload.rate_limits // {}' 2>/dev/null
+    while IFS= read -r f; do grep -h -e '"rate_limits"' -e usage_limit_exceeded "$f"; done |
+    jq -sc 'def secs: sub("\\.[0-9]+"; "") | fromdateiso8601;
+      (map(select(.payload.rate_limits.primary != null)) | max_by(.timestamp // "")) as $e |
+      ($e.payload.rate_limits // {}) as $r |
+      # ponytail: assumes the 5-hour window is the one that ran out; the weekly cap shows in its own numbers.
+      if any(.[]; (.payload.error? | objects | .codex_error_info) == "usage_limit_exceeded"
+             and .timestamp > ($e.timestamp // "") and (.timestamp | secs) < ($r.primary.resets_at // 0))
+      then $r | .primary.used_percent = 100 else $r end' 2>/dev/null
 }
 
 # Live Claude usage from Claude Code's own `/usage` command: it runs locally and sends no message,
@@ -182,8 +189,10 @@ ping_codex() {
   # Codex echoes the whole prompt (incl. your AGENTS.md) on stderr: keep it out of the log unless it failed.
   rm -f "$STATE/codex.reply"
   (cd "$STATE" && limit codex exec --skip-git-repo-check --sandbox read-only ${lean[@]+"${lean[@]}"} \
-     -c model_reasoning_effort=low -o "$STATE/codex.reply" "$(prompt_for codex)" </dev/null >/dev/null 2>"$STATE/codex.err") ||
-    { tail -n 5 "$STATE/codex.err" >>"$STATE/log"; return 1; }
+     -c model_reasoning_effort=low -o "$STATE/codex.reply" "$(prompt_for codex)" </dev/null >/dev/null 2>"$STATE/codex.err") || {
+    # Out of usage: not worth retrying. reset_at reads the window's end from the log.
+    grep -q "hit your usage limit" "$STATE/codex.err" && return 2
+    tail -n 5 "$STATE/codex.err" >>"$STATE/log"; return 1; }
   # Trust the reset time Codex just logged; if a window was already open it ends sooner than 5h from now.
   local r; r=$(int "$(codex_limits | jq '.primary.resets_at // 0' 2>/dev/null)")
   echo $(( r > $(now) ? r : $(now) + 18000 )) >"$STATE/codex.reset"
