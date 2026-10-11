@@ -15,7 +15,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.7.2
+VERSION=3.7.3
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -172,9 +172,11 @@ reset_at() {
     claude) int "$(cat "$STATE/claude.reset" 2>/dev/null)" ;;
     # Codex logs its own limits, so manual usage counts too. Weekly cap hit -> wait for the weekly reset.
     # An open window in the log wins (it follows account switches); otherwise our own last ping,
-    # so unreadable logs can never mean "ping every tick".
+    # so unreadable logs can never mean "ping every tick". At 0% Codex still gives a reset time
+    # (seen 2026-10-11: no window open, yet the 06:00 slot never fired), so 0% counts as no window.
     codex) local log saved
-           log=$(int "$(codex_limits | jq 'if (.secondary.used_percent // 0) >= 100 then .secondary.resets_at else .primary.resets_at end // 0' 2>/dev/null)")
+           log=$(int "$(codex_limits | jq 'if (.secondary.used_percent // 0) >= 100 then .secondary.resets_at
+             elif (.primary.used_percent // 0) > 0 then .primary.resets_at else 0 end // 0' 2>/dev/null)")
            saved=$(int "$(cat "$STATE/codex.reset" 2>/dev/null)")
            [ "$log" -gt "$(now)" ] && echo "$log" || echo "$saved" ;;
     *) echo 0 ;;
@@ -217,7 +219,7 @@ ping_codex() {
      -c model_reasoning_effort=low "$(prompt_for codex)" </dev/null >/dev/null 2>"$STATE/codex.err") || {
     # Out of usage: not worth retrying. reset_at reads the window's end from the log.
     grep -q "hit your usage limit" "$STATE/codex.err" && return 2
-    tail -n 5 "$STATE/codex.err" >>"$STATE/log"; return 1; }
+    awk '/ERROR/ && !seen[$0]++' "$STATE/codex.err" | tail -n 3 >>"$STATE/log"; return 1; }
   # Trust the reset time Codex now reports; if a window was already open it ends sooner than 5h from now.
   rm -f "$STATE/codex.live"
   local r; r=$(int "$(codex_limits | jq '.primary.resets_at // 0' 2>/dev/null)")
@@ -253,12 +255,10 @@ ping() {
 
 # due <tool>: should this tool be pinged right now, according to its mode?
 due() {
-  local t=$1 days time ts last edited
+  local t=$1 days time ts last edited slot="" r
   case $(cfg "$t" mode) in
     watch) [ "$(now)" -ge "$(reset_at "$t")" ] ;;
     schedule)
-      # A message inside an open window doesn't start a new one: wait for it to end (still within the slot's 3 h).
-      [ "$(now)" -ge "$(reset_at "$t")" ] || return 1
       days=$(cfg "$t" days)
       last=$(int "$(cat "$STATE/$t.last" 2>/dev/null)")
       # A slot saved after its time has passed waits for tomorrow, as the panel shows.
@@ -271,9 +271,15 @@ due() {
           ts=$(( $(int "$(at "$time")") - back * 86400 ))
           [ -z "$days" ] || [[ " $days " == *" $(( ($(date +%w) + 7 - back) % 7 )) "* ]] || continue
           # Fire once per slot; a Mac that wakes up to 3 h late still catches up.
-          [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && [ "$edited" -lt "$ts" ] && return 0
+          [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && [ "$edited" -lt "$ts" ] && slot=$ts
         done
       done
+      [ -n "$slot" ] || return 1
+      # A message inside an open window doesn't start a new one: wait for it to end (still within the slot's 3 h).
+      r=$(reset_at "$t")
+      [ "$(now)" -ge "$r" ] && return 0
+      [ "$(cat "$STATE/$t.waits" 2>/dev/null)" = "$slot" ] ||
+        { echo "$slot" >"$STATE/$t.waits"; log "$t: $(fmt "$slot") waits for the window already open (until $(fmt "$r"))" >/dev/null; }
       return 1 ;;
     *) return 1 ;;
   esac
@@ -282,6 +288,9 @@ due() {
 tick() {
   local t
   LIVE_AGE=${UF_LIVE_AGE:-15}
+  # Hold the Mac up until this run ends: after a scheduled wake (lid closed) macOS goes back to sleep
+  # within seconds, which froze the 11:00 message until the lid opened (2026-10-11). -s works on AC only.
+  [ "$(uname)" = Darwin ] && { caffeinate -i -s -w $$ >/dev/null 2>&1 & HOLD=$!; }
   [ "$(wc -l 2>/dev/null <"$STATE/log" || echo 0)" -gt 2000 ] && { tail -n 1000 "$STATE/log" >"$STATE/log.tmp" && mv -f "$STATE/log.tmp" "$STATE/log"; }
   for t in claude codex; do
     if ! command -v "$t" >/dev/null; then
@@ -352,6 +361,7 @@ sleep_check() {
   for ts in $(due_times); do [ "$ts" -le $(( $(now) + 900 )) ] && return 0; done   # stay up for one that's close
   [ "$(idle_secs)" -ge 600 ] || return 0
   log "sleep: agents are done and nobody is using the Mac; going to sleep"
+  [ -n "${HOLD:-}" ] && kill "$HOLD" 2>/dev/null
   pmset sleepnow >/dev/null 2>&1
 }
 

@@ -36,6 +36,7 @@ echo '{"payload":{"rate_limits":{"primary":{"resets_at":$FUTURE},"secondary":{"u
 EOF
 printf '#!/bin/sh\necho "$@" >>"%s/notes"\n' "$T" >"$T/bin/osascript"   # never pop real notifications
 printf '#!/bin/sh\nexit 1\n' >"$T/bin/sudo"   # never schedule real wakes
+printf '#!/bin/sh\necho "caffeinate $*" >>"%s/power"\n' "$T" >"$T/bin/caffeinate"   # never hold the real Mac up
 chmod +x "$T/bin/"*
 
 lk() { HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" UF_TOOLS="claude codex" UF_RETRY_DELAY=0 UF_JITTER=0 ./usageforge "$@" >/dev/null; }
@@ -106,6 +107,18 @@ if [ "$past" != 23:59 ]; then
   lk tick;  check "4 5" "past slot today should fire once"
   [ "$(cat "$T/claude.prompt")" = "Hello forge" ] || { echo "FAIL: saved prompt not used"; exit 1; }
   lk tick;  check "4 5" "slot should not fire twice"
+  grep -q "claude: .* waits for the window already open" "$T/state/log" || { echo "FAIL: a slot held by an open window should say so"; exit 1; }
+  # Codex at 0% still reports a reset time; that is no open window, so the slot fires.
+  cat >"$T/bin/codex" <<EOF2
+#!/bin/sh
+[ "\$2" = --help ] && exit 0
+[ "\$1" = app-server ] && exit 1
+echo x >>"$T/codex.calls"
+EOF2
+  mkdir -p "$S"; lim 2026-10-11T11:00:00Z 0 $FUTURE >"$S/rollout-new.jsonl"; echo 1 >"$T/state/codex.reset"; rm -f "$T/state/codex.last"
+  cfg '{"claude":{"mode":"schedule","times":["'$future'"]},"codex":{"mode":"schedule","times":["'$past'"]}}'
+  lk tick;  check "4 6" "codex at 0% with a reset time should still fire its slot"
+  [ "$(uname)" != Darwin ] || grep -q "caffeinate -i -s -w" "$T/power" || { echo "FAIL: a tick should hold the Mac awake while it runs"; exit 1; }
 fi
 # A rejection without a reset time must not mean "ping every tick".
 cat >"$T/bin/claude" <<EOF
@@ -162,9 +175,8 @@ fi
 # Wake: one wake a minute after each set time, kept in step with the schedule.
 if [ "$(uname)" = Darwin ]; then
   printf '#!/bin/sh\necho "pmset $*" >>"%s/power"\n' "$T" >"$T/bin/pmset"
-  printf '#!/bin/sh\necho "caffeinate $*" >>"%s/power"\n' "$T" >"$T/bin/caffeinate"
   printf '#!/bin/sh\necho "  |   \\"HIDIdleTime\\" = $(cat "%s/idle")000000000"\n' "$T" >"$T/bin/ioreg"
-  chmod +x "$T/bin/pmset" "$T/bin/caffeinate" "$T/bin/ioreg"
+  chmod +x "$T/bin/pmset" "$T/bin/ioreg"
   power() { cat "$T/power" 2>/dev/null | grep -c "$1"; }
   find "$T/home" -name '*.jsonl' -exec touch -t 202001010000 {} +
   night='"night":{"sleep":true,"wake":false,"from":"'$(date -v-1H +%H:%M)'","to":"'$(date -v+1H +%H:%M)'"}'
@@ -174,7 +186,7 @@ if [ "$(uname)" = Darwin ]; then
   echo 700 >"$T/idle"; lk tick
   [ "$(power sleepnow)" = 1 ] || { echo "FAIL: should sleep once agents are done"; exit 1; }
   mkdir -p "$T/home/.claude/projects/p"; touch "$T/home/.claude/projects/p/s.jsonl"; lk tick; sleep 1   # caffeinate starts in the background
-  [ "$(power sleepnow)" = 1 ] && [ "$(power caffeinate)" = 1 ] || { echo "FAIL: should keep the Mac up while an agent works"; exit 1; }
+  [ "$(power sleepnow)" = 1 ] && [ "$(power 'caffeinate -i -t')" = 1 ] || { echo "FAIL: should keep the Mac up while an agent works"; exit 1; }
   rm -rf "$T/home/.claude/projects"
   cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},"night":{"sleep":false,"wake":false}}'; lk tick
   [ "$(power sleepnow)" = 1 ] || { echo "FAIL: sleep off should never sleep the Mac"; exit 1; }
@@ -195,7 +207,7 @@ if [ "$(uname)" = Darwin ]; then
     { echo "FAIL: status should show wake"; exit 1; }
   lk wake allow
   grep -q "visudo -cf" "$T/notes" && grep -q "/etc/sudoers.d/usageforge" "$T/notes" || { echo "FAIL: wake allow should install a checked sudoers rule"; exit 1; }
-  rm -f "$T/bin/pmset" "$T/bin/caffeinate" "$T/bin/ioreg"
+  rm -f "$T/bin/pmset" "$T/bin/ioreg"
 fi
 printf '#!/bin/sh\nexit 1\n' >"$T/bin/sudo"
 
