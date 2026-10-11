@@ -202,7 +202,6 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .nrow .switch { min-width: 220px; color: var(--ink); font-size: 15px; }
 .nrow .note { color: var(--muted); font-size: 14px; }
 .nrow .note b { color: var(--ink-2); font-weight: 500; }
-.hours { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
 
 /* Activity */
 .activity { margin-top: 26px; }
@@ -293,7 +292,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
     <div class="nrows">
     <div class="nrow">
       <label class="switch"><input type="checkbox" id="sleep-on"><i></i>Sleep when work is done</label>
-      <span class="hours" id="sleep-hours"><input type="time" id="night-from" value="23:30" aria-label="Sleep from">to<input type="time" id="night-to" value="08:00" aria-label="Sleep until"></span>
+      <span class="note hidden" id="sleep-note">Sleeps once your agents finish, then switches off</span>
     </div>
     <div class="nrow">
       <label class="switch"><input type="checkbox" id="wake-on"><i></i>Wake for set times</label>
@@ -381,7 +380,7 @@ const TOOLS = {
 const DAYS = [[1, "M"], [2, "T"], [3, "W"], [4, "T"], [5, "F"], [6, "S"], [0, "S"]];
 const DAY_NAMES = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
 const DEFAULT = { mode: "off", times: ["06:00"], days: [0, 1, 2, 3, 4, 5, 6], prompt: "", model: "" };
-const NIGHT = { sleep: false, wake: true, from: "23:30", to: "08:00" };
+const NIGHT = { sleep: false, wake: true };
 const WINDOW = 5 * 60; // minutes
 const STILL = matchMedia("(prefers-reduced-motion: reduce)");
 
@@ -688,8 +687,7 @@ function renderEngine() {
 function renderNight() {
   const n = config.night, w = state?.wake || {};
   document.getElementById("sleep-on").checked = n.sleep;
-  document.getElementById("sleep-hours").classList.toggle("hidden", !n.sleep);
-  for (const k of ["from", "to"]) { const i = document.getElementById(`night-${k}`); if (document.activeElement !== i) i.value = n[k]; }
+  document.getElementById("sleep-note").classList.toggle("hidden", !n.sleep);
   document.getElementById("wake-on").checked = n.wake;
   const note = document.getElementById("wake-note"), allow = document.getElementById("allow-btn");
   note.innerHTML = "";
@@ -752,7 +750,7 @@ const GUIDE = [
   { at: () => els.claude.querySelector(".day"), title: "Plan your day",
     text: "With <b>At set times</b> on, a bar shows your day. Each block is one 5-hour window. <b>Click an empty hour</b> to add one, drag a block to move it, × to remove it." },
   { at: () => document.getElementById("night"), title: "Sleep and wake",
-    text: "<b>Sleep when work is done</b> lets the Mac sleep once Claude Code and Codex have finished. <b>Wake for set times</b> wakes a sleeping Mac so each window still starts." },
+    text: "Switch on <b>Sleep when work is done</b> as you leave: the Mac sleeps once Claude Code and Codex have finished. <b>Wake for set times</b> wakes a sleeping Mac so each window still starts." },
 ];
 let guide = null;
 const el = (tag, cls = "", html = "") => Object.assign(document.createElement(tag), { className: cls, innerHTML: html });
@@ -840,10 +838,12 @@ async function refresh(first) {
   try {
     const fresh = await api("/api/status");
     state = fresh; lastOk = Date.now() / 1000; document.body.classList.remove("stale"); document.getElementById("engine").classList.add("hidden");
+    const n = state.config?.night || {};
+    // Sleep switches itself off once the Mac has slept, so take it from the saved config every time.
+    config.night.sleep = (n.sleep ?? n.on) === true;
     if (first) {
       for (const tool of Object.keys(TOOLS)) config[tool] = { ...DEFAULT, ...(state.config?.[tool] || {}) };
-      const n = state.config?.night || {};
-      config.night = { sleep: (n.sleep ?? n.on) === true, wake: n.wake !== false, from: n.from || NIGHT.from, to: n.to || NIGHT.to };
+      config.night.wake = n.wake !== false;
     }
     render();
     let seen = false;
@@ -868,12 +868,6 @@ document.getElementById("logfilter").addEventListener("click", (e) => {
 
 document.getElementById("sleep-on").addEventListener("change", (e) => { config.night.sleep = e.target.checked; renderNight(); save(); });
 document.getElementById("wake-on").addEventListener("change", (e) => { config.night.wake = e.target.checked; renderNight(); save(); });
-for (const k of ["from", "to"]) {
-  document.getElementById(`night-${k}`).addEventListener("change", (e) => {
-    if (!/^\d\d:\d\d$/.test(e.target.value)) return;
-    config.night[k] = e.target.value; save();
-  });
-}
 document.getElementById("allow-btn").addEventListener("click", async (e) => {
   const b = e.currentTarget;
   b.disabled = true; b.textContent = "Waiting for your password…";

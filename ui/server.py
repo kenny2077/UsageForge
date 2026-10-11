@@ -68,9 +68,7 @@ def clean_tool(c):
 
 def clean_night(n):
     """Sleep and wake from the browser: sleep off and wake on unless switched."""
-    if any(not TIME.match(str(n.get(k, ""))) for k in ("from", "to")):
-        raise ValueError("sleep hours need a start and an end, like 23:30 and 08:00")
-    return {"sleep": n.get("sleep") is True, "wake": n.get("wake") is not False, "from": n["from"], "to": n["to"]}
+    return {"sleep": n.get("sleep") is True, "wake": n.get("wake") is not False}
 
 
 def saved_config():

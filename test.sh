@@ -188,7 +188,7 @@ EOF
   ! HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge doctor >/dev/null || { echo "FAIL: doctor should flag no times"; exit 1; }
 fi
 
-# Sleep: in its hours, sleep once agents are done and nobody is at the Mac; stay up while one works.
+# Sleep: once switched on, sleep once agents are done and nobody is at the Mac (then switch off); stay up while one works.
 # Wake: one wake a minute after each set time, kept in step with the schedule.
 if [ "$(uname)" = Darwin ]; then
   printf '#!/bin/sh\necho "pmset $*" >>"%s/power"\n' "$T" >"$T/bin/pmset"
@@ -196,18 +196,21 @@ if [ "$(uname)" = Darwin ]; then
   chmod +x "$T/bin/pmset" "$T/bin/ioreg"
   power() { cat "$T/power" 2>/dev/null | grep -c "$1"; }
   find "$T/home" -name '*.jsonl' -exec touch -t 202001010000 {} +
-  night='"night":{"sleep":true,"wake":false,"from":"'$(date -v-1H +%H:%M)'","to":"'$(date -v+1H +%H:%M)'"}'
+  night='"night":{"sleep":true,"wake":false}'
   cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},'"$night"'}'
   echo 100 >"$T/idle"; lk tick
   [ "$(power sleepnow)" = 0 ] || { echo "FAIL: sleep while someone uses the Mac"; exit 1; }
   echo 700 >"$T/idle"; lk tick
   [ "$(power sleepnow)" = 1 ] || { echo "FAIL: should sleep once agents are done"; exit 1; }
+  jq -e '.night.sleep == false' "$T/state/config.json" >/dev/null || { echo "FAIL: sleep should switch off once it has slept the Mac"; exit 1; }
+  cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},'"$night"'}'
   mkdir -p "$T/home/.claude/projects/p"; touch "$T/home/.claude/projects/p/s.jsonl"; lk tick; sleep 1   # caffeinate starts in the background
   [ "$(power sleepnow)" = 1 ] && [ "$(power 'caffeinate -i -t')" = 1 ] || { echo "FAIL: should keep the Mac up while an agent works"; exit 1; }
   rm -rf "$T/home/.claude/projects"
   cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},"night":{"sleep":false,"wake":false}}'; lk tick
   [ "$(power sleepnow)" = 1 ] || { echo "FAIL: sleep off should never sleep the Mac"; exit 1; }
-  ! lk sleep 25:00 08:00 2>/dev/null || { echo "FAIL: bad sleep time accepted"; exit 1; }
+  lk sleep on >/dev/null && jq -e '.night.sleep' "$T/state/config.json" >/dev/null || { echo "FAIL: sleep on"; exit 1; }
+  ! lk sleep 23:30 08:00 2>/dev/null || { echo "FAIL: sleep takes on or off"; exit 1; }
 
   # Wake. sudo is faked: it logs and says yes.
   printf '#!/bin/sh\n[ "$2" = -l ] && exit 0\necho "$*" >>"%s/sudo"\n' "$T" >"$T/bin/sudo"; chmod +x "$T/bin/sudo"

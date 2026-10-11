@@ -24,7 +24,7 @@ It reads the tools' own numbers (Claude Code's `/usage`, Codex's session logs), 
 ## Capabilities and Constraints
 - Per tool: mode (Off / At set times / Back to back), set times on chosen weekdays, message and model; 5-hour and weekly meters; activity log; one notification kind (when something goes wrong); a first-run guide.
 - Single static HTML file, no build step, no external scripts; fonts and images served from `docs/assets`. Must work at phone width.
-- Night hours (macOS): during set hours the Mac stays awake while an agent works, sleeps once they finish and nobody is using it, and can wake one minute after the first set time inside those hours (one password prompt, `pmset repeat`).
+- Sleep and wake (macOS): Sleep, switched on as the user leaves, keeps the Mac awake while an agent works, sleeps it once they finish and nobody is using it, then switches itself off. Wake (on by default) wakes a sleeping Mac a minute after each set time (one password prompt, `pmset schedule wake`).
 
 ## Brand Commitments
 - Name UsageForge and the pixel anvil mark (`docs/assets/usageforge-mark.svg`).

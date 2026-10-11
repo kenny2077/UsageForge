@@ -9,7 +9,7 @@ related_targets: []
 
 Scope: the local control panel served by `usageforge ui`, also shown inside the author's menu-bar app. Mode: Operate.
 
-Audience and job: mainly the author. Set when each tool's 5-hour window starts, glance at usage, set night hours, see what happened. Every control saves on its own.
+Audience and job: mainly the author. Set when each tool's 5-hour window starts, glance at usage, switch sleep and wake, see what happened. Every control saves on its own.
 
 Constraints: one static HTML file, no external scripts, fonts from /assets/fonts, phone width works, reduced motion respected, page must stay fast (the sky canvas pauses when hidden or idle).
 
