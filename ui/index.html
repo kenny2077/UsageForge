@@ -39,7 +39,7 @@ svg.i { width: 14px; height: 14px; flex: none; stroke: currentColor; fill: none;
 /* ---------- The sky: the background check as a black hole ---------- */
 .sky { position: relative; height: 400px; overflow: hidden; border-bottom: 1px solid var(--line); }
 /* The author's black hole, a looping image: the browser plays it, nothing is computed here. */
-.hole { position: absolute; top: 50%; left: 50%; width: min(960px, 72%); height: auto; transform: translate(-40%, -50%);   /* a little right of centre */ display: block; user-select: none; pointer-events: none;
+.hole { position: absolute; top: 50%; left: 50%; width: min(960px, 72%); height: auto; transform: translate(-50%, -50%); display: block; user-select: none; pointer-events: none;
   -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent); mask-image: radial-gradient(closest-side, #000 72%, transparent); transition: opacity 0.4s; }
 .hole.still { opacity: 0.55; }
 .sky-top { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px var(--gutter) 0; }
