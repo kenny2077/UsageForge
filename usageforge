@@ -15,7 +15,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.7.3
+VERSION=3.7.4
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -253,33 +253,51 @@ ping() {
 
 # ---------- The 5-minute check ----------
 
+# added <tool> <time>: when this set time was saved. A time first seen here was saved at the last
+# edit at the latest. Times no longer set are forgotten, so one removed and added back counts as new.
+# ponytail: removed and re-added within one 5-minute check still counts as old.
+added() {
+  local f="$STATE/$1.added" a
+  a=$(awk -v k="$2" '$1 == k {print $2; exit}' "$f" 2>/dev/null)
+  [ -n "$a" ] || { a=$(int "$(date -r "$CONFIG" +%s 2>/dev/null)"); echo "$2 $a" >>"$f"; }
+  echo "$a"
+}
+
 # due <tool>: should this tool be pinged right now, according to its mode?
 due() {
-  local t=$1 days time ts last edited slot="" r
+  local t=$1 days time times ts last slot="" r ws we
   case $(cfg "$t" mode) in
     watch) [ "$(now)" -ge "$(reset_at "$t")" ] ;;
     schedule)
-      days=$(cfg "$t" days)
+      days=$(cfg "$t" days) times=$(cfg "$t" times)
       last=$(int "$(cat "$STATE/$t.last" 2>/dev/null)")
-      # A slot saved after its time has passed waits for tomorrow, as the panel shows.
-      # ponytail: any edit counts; a slot missed by sleep, then an edit within 3 h, skips that catch-up.
-      edited=$(int "$(date -r "$CONFIG" +%s 2>/dev/null)")
-      for time in $(cfg "$t" times); do
+      [ -f "$STATE/$t.added" ] && awk -v keep=" $times " 'index(keep, " " $1 " ")' "$STATE/$t.added" >"$STATE/$t.added.tmp" &&
+        mv -f "$STATE/$t.added.tmp" "$STATE/$t.added"
+      for time in $times; do added "$t" "$time" >/dev/null; done   # note new times now, before a later save
+      for time in $times; do
         [[ $time =~ ^([01]?[0-9]|2[0-3]):[0-5][0-9]$ ]] || continue
         # Today's slot, and yesterday's (a 23:30 slot still catches up at 00:40).
         for back in 0 1; do
           ts=$(( $(int "$(at "$time")") - back * 86400 ))
           [ -z "$days" ] || [[ " $days " == *" $(( ($(date +%w) + 7 - back) % 7 )) "* ]] || continue
-          # Fire once per slot; a Mac that wakes up to 3 h late still catches up.
-          [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && [ "$edited" -lt "$ts" ] && slot=$ts
+          # Fire once per slot; a Mac that wakes up to 3 h late still catches up. A time saved after
+          # it passed waits for tomorrow, as the panel shows.
+          [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && [ "$(added "$t" "$time")" -lt "$ts" ] && slot=$ts
         done
       done
+      # A set time held back by an open window goes out once that window ends, even past its 3 h.
+      if [ -z "$slot" ]; then
+        { read -r ws we <"$STATE/$t.waits"; } 2>/dev/null; ws=$(int "${ws:-}") we=$(int "${we:-}")
+        [ "$last" -lt "$ws" ] && [ "$(now)" -ge "$we" ] && [ "$(now)" -lt $(( we + 10800 )) ] && slot=$ws
+      fi
       [ -n "$slot" ] || return 1
-      # A message inside an open window doesn't start a new one: wait for it to end (still within the slot's 3 h).
+      # A message inside an open window doesn't start a new one: wait for it to end.
+      [ "$t" = claude ] && claude_usage
       r=$(reset_at "$t")
       [ "$(now)" -ge "$r" ] && return 0
-      [ "$(cat "$STATE/$t.waits" 2>/dev/null)" = "$slot" ] ||
-        { echo "$slot" >"$STATE/$t.waits"; log "$t: $(fmt "$slot") waits for the window already open (until $(fmt "$r"))" >/dev/null; }
+      [ "$(cut -d' ' -f1 "$STATE/$t.waits" 2>/dev/null)" = "$slot" ] ||
+        log "$t: $(fmt "$slot") goes out when the open window ends ($(fmt "$r"))" >/dev/null
+      echo "$slot $r" >"$STATE/$t.waits"
       return 1 ;;
     *) return 1 ;;
   esac
@@ -300,7 +318,8 @@ tick() {
       continue
     fi
     [ "$(now)" -lt "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" ] && continue
-    [ "$t" = claude ] && [ "$(cfg claude mode)" != off ] && [ -n "$(cfg claude mode)" ] && claude_usage
+    # Live usage only when it decides something: every check in Back to back, else when a time is due (in due).
+    [ "$t" = claude ] && [ "$(cfg claude mode)" = watch ] && claude_usage
     due "$t" && { jitter; UF_WHY=$(cfg "$t" mode) ping "$t"; }
   done
   sleep_check
@@ -332,7 +351,7 @@ idle_secs() { int "$(ioreg -c IOHIDSystem 2>/dev/null | awk '/HIDIdleTime/ {prin
 # The moments a message is due in the next 24 hours: set times on their days, and the end of the
 # open window for tools in Back to back mode. One epoch second per line.
 due_times() {
-  local t time d ts days
+  local t time d ts days ws we
   for t in claude codex; do
     command -v "$t" >/dev/null || continue
     case $(cfg "$t" mode) in
@@ -344,7 +363,11 @@ due_times() {
             [ -z "$days" ] || [[ " $days " == *" $(( ($(date +%w) + d) % 7 )) "* ]] || continue
             [ "$ts" -gt "$(now)" ] && [ "$ts" -le $(( $(now) + 86400 )) ] && echo "$ts"
           done
-        done ;;
+        done
+        # A set time waiting for an open window to end.
+        ws="" we=""; { read -r ws we <"$STATE/$t.waits"; } 2>/dev/null
+        [ "$(int "$(cat "$STATE/$t.last" 2>/dev/null)")" -lt "$(int "${ws:-}")" ] && [ "$(int "${we:-}")" -gt "$(now)" ] &&
+          [ "$(int "${we:-}")" -le $(( $(now) + 86400 )) ] && echo "$we" ;;
       watch) ts=$(reset_at "$t"); [ "$ts" -gt "$(now)" ] && [ "$ts" -le $(( $(now) + 86400 )) ] && echo "$ts" ;;
     esac
   done | sort -n | uniq
