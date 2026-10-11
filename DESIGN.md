@@ -1,6 +1,6 @@
 ---
 name: UsageForge
-description: The local control panel and terminal art, drawn as a black hole in dots.
+description: The local control panel, drawn as a black hole in dots.
 colors:
   void: "#06080d"
   hull: "#0b0f17"
@@ -115,7 +115,7 @@ components:
 
 # Design System: UsageForge
 
-Scope: this system covers the local control panel (`ui/index.html`, also shown in the author's menu-bar app) and the terminal's pixel black hole (`ui/hole.py`). The public website under `docs/` keeps its alpine dawn look on purpose and is not governed by this file.
+Scope: this system covers the local control panel (`ui/index.html`, also shown in the author's menu-bar app). The public website under `docs/` keeps its alpine dawn look on purpose and is not governed by this file.
 
 ## Overview
 
@@ -167,7 +167,7 @@ A deep-space palette: navy void and star-dust neutrals, lit only by the warm dis
 
 **The One Alarm Rule.** Flare is the only error color and appears only when something is actually wrong.
 
-The sky and the terminal show the same piece: `ui/bake-hole.sh` bakes 12 frames of the GIF, cropped to the hole, into `ui/hole.bin` (64×36 pixels), which `ui/hole.py` draws in half blocks. Rebake after changing the GIF. The page ground `#04060c` is the GIF's own ground, so the image has no visible edge.
+The page ground `#04060c` is the GIF's own ground, so the image has no visible edge.
 
 ## Typography
 
@@ -267,7 +267,7 @@ A 38x22px pill track in star dust with a muted knob; when on the track tints gol
 - **Do** set times and numbers in mono with tabular numerals.
 - **Do** separate parts with 1px hairlines on the void instead of cards.
 - **Do** stop the sky when the page is hidden, the tool is off, or the reader asks for reduced motion, and paint one still frame instead.
-- **Do** keep the sky image and `ui/hole.bin` baked from the same GIF, on the same void.
+- **Do** keep the page ground the same as the sky image's own ground.
 
 ### Don't:
 - **Don't** use neon accents, glowing edges or a grid of cards.

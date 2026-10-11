@@ -257,9 +257,4 @@ cp -R ui "$T/ui"; python3 -B "$T/ui/server.py" ./usageforge --no-open --port 459
 rm "$T/ui/index.html"
 [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4597/)" = 503 ] || { kill $P; echo "FAIL: panel with its files gone"; exit 1; }
 sleep 1; ! kill -0 $P 2>/dev/null || { kill $P; echo "FAIL: panel should exit once its files are gone"; exit 1; }
-# The pixel black hole: 12 baked frames, 18 terminal rows each, a dark shadow and a lit disk.
-python3 -B -c "import sys; sys.path.insert(0, 'ui'); import hole
-assert len(hole.frames()) == 12 and hole.ansi().count(chr(10)) == 18
-px = hole.pixels()
-assert sum(px[13][32]) < 60 and max(sum(c) for row in px for c in row) > 500" || { echo "FAIL: black hole"; exit 1; }
 echo PASS

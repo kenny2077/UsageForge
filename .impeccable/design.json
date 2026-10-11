@@ -365,7 +365,7 @@
       "starTerminal": "#606c8c",
       "dust": "#7f8db0",
       "void": "#06080d",
-      "purpose": "Shared by the panel sky image and ui/hole.bin."
+      "purpose": "Shared by the panel sky image."
     }
   },
   "components": [
@@ -488,7 +488,7 @@
       "**Do** set times and numbers in mono with tabular numerals.",
       "**Do** separate parts with 1px hairlines on the void instead of cards.",
       "**Do** stop the sky when the page is hidden, the tool is off, or the reader asks for reduced motion, and paint one still frame instead.",
-      "**Do** keep the sky image and `ui/hole.bin` baked from the same GIF, on the same void."
+      "**Do** keep the page ground the same as the sky image's own ground."
     ],
     "donts": [
       "**Don't** use neon accents, glowing edges or a grid of cards.",

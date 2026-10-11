@@ -16,7 +16,6 @@ import subprocess
 import sys
 import textwrap
 import threading
-import time
 import webbrowser
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -28,8 +27,6 @@ PORT = int(sys.argv[sys.argv.index("--port") + 1]) if "--port" in sys.argv else 
 STATE = Path(os.environ.get("UF_STATE") or Path.home() / ".local/state/usageforge").resolve()
 ASSETS = (HERE.parent / "docs" / "assets").resolve()
 TOKEN = secrets.token_urlsafe(24)
-sys.path.insert(0, str(HERE))
-import hole  # noqa: E402
 TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2", ".gif": "image/gif", ".webp": "image/webp"}
 # The tools' own app icons, read from the apps you have installed (nothing is bundled).
 ICONS = {
@@ -101,10 +98,9 @@ def icon(tool):
 
 
 def hello(url):
-    """What `usageforge ui` prints: the black hole turning, then the setup check, in the panel's colours."""
+    """What `usageforge ui` prints: the setup check, in the terminal's own colours."""
     if not sys.stdout.isatty() or os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb":
         return print(f"UsageForge control panel: {url}  (Ctrl+C to quit)")
-    true = os.environ.get("COLORTERM") in ("truecolor", "24bit")
 
     # The terminal's own named colours, so the text reads on light and dark themes alike.
     def ink(code, text):
@@ -112,14 +108,6 @@ def hello(url):
     TITLE, ACCENT, OK, WARN, BAD, MUTED = "1", "1;33", "36", "33", "31", "2"
 
     size = shutil.get_terminal_size()
-    if size.columns >= 68:
-        # The disk turns for under a second, then holds still above the setup check.
-        for i in range(len(hole.frames())):
-            if i:
-                sys.stdout.write(f"\x1b[{hole.H // 2}A")
-            sys.stdout.write(hole.ansi(i, true))
-            sys.stdout.flush()
-            time.sleep(0.05)
     print()
     print("  " + ink(TITLE, "UsageForge") + ink(MUTED, "  starts your 5-hour window on your schedule"))
     print()

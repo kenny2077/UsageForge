@@ -18,7 +18,7 @@ It reads the tools' own numbers (Claude Code's `/usage`, Codex's session logs), 
 ## Operating Context
 - `usageforge ui` serves the panel on 127.0.0.1:4517 from a small Python server; every API call carries a per-run token.
 - The background check is a launchd job (cron elsewhere); the panel only edits `config.json` and shows `status --json`.
-- The terminal prints a small pixel scene and the setup check when the panel starts.
+- The terminal prints the setup check when the panel starts.
 - The Mac must be awake for messages to go out.
 
 ## Capabilities and Constraints
@@ -28,7 +28,7 @@ It reads the tools' own numbers (Claude Code's `/usage`, Codex's session logs), 
 
 ## Brand Commitments
 - Name UsageForge and the pixel anvil mark (`docs/assets/usageforge-mark.svg`).
-- The panel and the terminal art take a universe / black-hole look, in the spirit of the author's GitHub profile black hole (dot-drawn accretion disk, lensed ring, starfield) and ascii.rest's dot scenes. The public website keeps its alpine dawn for now.
+- The panel takes a universe / black-hole look, in the spirit of the author's GitHub profile black hole (dot-drawn accretion disk, lensed ring, starfield) and ascii.rest's dot scenes. The public website keeps its alpine dawn for now.
 
 ## Evidence on Hand
 - The author's profile black hole: github.com/kenny2077 (`assets/black-hole.gif`).

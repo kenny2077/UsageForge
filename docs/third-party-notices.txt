@@ -1,5 +1,5 @@
 The hero scene in script.js adapts "alpine dawn" from ascii.rest by bas3line, and the black hole in
-the control panel and terminal (docs/assets/black-hole.gif, ui/hole.bin) traces its rays with the method
+the control panel (docs/assets/black-hole.gif) traces its rays with the method
 of that project's "black hole" piece
 (github.com/bas3line/ascii), used under the MIT License:
 
