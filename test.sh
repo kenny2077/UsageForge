@@ -26,6 +26,7 @@ EOF
 cat >"$T/bin/codex" <<EOF
 #!/bin/sh
 [ "\$2" = --help ] && exit 0
+[ "\$1" = app-server ] && exit 1   # no live limits: read the logs
 echo x >>"$T/codex.calls"
 mode=\$(cat "$T/codex.mode" 2>/dev/null)
 [ "\$mode" = fail ] && exit 1
@@ -182,7 +183,9 @@ if [ "$(uname)" = Darwin ]; then
   # Wake. sudo is faked: it logs and says yes.
   printf '#!/bin/sh\n[ "$2" = -l ] && exit 0\necho "$*" >>"%s/sudo"\n' "$T" >"$T/bin/sudo"; chmod +x "$T/bin/sudo"
   wakes() { cat "$T/sudo" 2>/dev/null | grep -c "$1"; }
-  t1=$(date -v+2H +%H:%M); w1=$(date -r $(( $(date -j -f '%Y-%m-%d %H:%M:%S' "$(date +%F) $t1:00" +%s) + 60 )) '+%m/%d/%y %H:%M:%S')
+  t1=$(date -v+2H +%H:%M); ts1=$(date -j -f '%Y-%m-%d %H:%M:%S' "$(date +%F) $t1:00" +%s)
+  [ "$ts1" -gt "$(date +%s)" ] || ts1=$(( ts1 + 86400 ))   # two hours on may be tomorrow
+  w1=$(date -r $(( ts1 + 60 )) '+%m/%d/%y %H:%M:%S')
   cfg '{"claude":{"mode":"schedule","times":["'$t1'"]},"codex":{"mode":"off"}}'   # wake is on by default
   lk tick; lk tick
   [ "$(wakes "schedule wake $w1")" = 1 ] || { echo "FAIL: one wake a minute after the set time ($(cat "$T/sudo" 2>/dev/null))"; exit 1; }
@@ -222,6 +225,7 @@ lim 2026-10-10T19:23:00Z 92 $FUTURE >"$S/rollout-new.jsonl"; : >"$T/codex.calls"
 cat >"$T/bin/codex" <<EOF
 #!/bin/sh
 [ "\$2" = --help ] && exit 0
+[ "\$1" = app-server ] && exit 1   # no live limits: read the logs
 echo x >>"$T/codex.calls"
 echo '{"timestamp":"2026-10-10T21:07:06.672Z","payload":{"type":"task_complete","error":{"message":"limit","codex_error_info":"usage_limit_exceeded"}}}' >"$S/rollout-limit.jsonl"
 echo "ERROR: You've hit your usage limit. Try again at 5:17 PM." >&2; exit 1

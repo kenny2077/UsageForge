@@ -94,10 +94,10 @@ There's one background check, run every 5 minutes. It re-reads the settings each
   Codex: `codex exec --sandbox read-only --ignore-user-config -c model_reasoning_effort=low "Good morning"`.
   `--ignore-user-config` skips your MCP servers; it's added only on Codex versions that support it.
 - **Reset detection (watch mode). It spends no quota and reads no tokens.**
-  - Codex writes its own limits to `~/.codex/sessions/**/rollout-*.jsonl` (`payload.rate_limits.primary.resets_at`).
-    UsageForge reads them there, so it also sees windows that you started yourself.
+  - Codex: UsageForge asks the Codex CLI itself for the account's live limits (`codex app-server`, `account/rateLimits/read`, the same call the Codex app makes). It sends no message and costs no quota, and it follows account switches.
+    If that fails, it falls back to the limits Codex writes to `~/.codex/sessions/**/rollout-*.jsonl`. Either way it also sees windows you started yourself.
   - Claude: UsageForge runs Claude Code's own `/usage` command (`claude -p /usage`). It runs locally, sends no message and costs no quota.
-    That gives the live 5-hour and weekly percentages and the exact reset times. The control panel refreshes it at most once a minute, and the background check once every 5 minutes.
+    That gives the live 5-hour and weekly percentages and the exact reset times. The panel and menu bar ask at most every 5 minutes, the background check every 15, and a ping refreshes it.
 - **When a ping fails:**
   - **Rate-limited** (5-hour or weekly cap): UsageForge waits until the reset time the server reports. For Codex it reads the weekly figure from the logs, so it doesn't send pings that can't succeed.
   - **Anything else** (still offline after a wake-up, logged out): it retries 3 times, one minute apart, then backs off for 15 minutes.
@@ -113,6 +113,7 @@ There's one background check, run every 5 minutes. It re-reads the settings each
   Linux cron skips jobs missed during sleep. Watch mode catches up on its next 5-minute check.
   cron uses the system time zone, which is often UTC on servers.
 - **`claude -p` billing may change.** If Anthropic starts billing it separately (announced, then paused, in 2026), a `claude -p` ping might stop opening the interactive window. See `docs/research.md`.
+- **Terms of service: your call.** UsageForge only runs the official `claude` and `codex` CLIs, unmodified and signed in as you. It never reads, copies or sends your credentials, calls no private endpoints, and never rotates accounts. Still, Anthropic's Consumer Terms bar access "through automated or non-human means, whether through a bot, script, or otherwise" unless Anthropic explicitly permits it, and OpenAI's terms bar programmatically extracting Output. A scheduled ping is automated use, and neither company has said whether it is allowed. The usage reads are rare (every 5–15 minutes) and send no messages. Use it at your own risk.
 - Each ping uses a small amount of your weekly (7-day) quota. Watch mode sends about 4–5 pings a day.
 - This moves *when* your window starts. It doesn't give you more usage.
 

@@ -15,7 +15,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.7.0
+VERSION=3.7.1
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -93,10 +93,39 @@ name_of() { [ "$1" = claude ] && echo "Claude Code" || echo "Codex"; }
 
 # ---------- Reading the windows ----------
 
-# Newest rate_limits Codex wrote to its own session logs. Newest by time, not the latest reset:
-# after switching accounts, the old account's window can end later than the current one's.
-# Hitting the limit logs an error, not new numbers: then the window counts as full until it resets.
+# How old (minutes) the live numbers may be before asking the tools again. Each ask is a small,
+# read-only request from the tool's own CLI; keep them rare: 5 min for the panel and menu bar,
+# 15 min for the background check (a ping refreshes them anyway).
+LIVE_AGE=${UF_LIVE_AGE:-5}
+
+# Codex's limits, live: the same call the Codex app makes (`codex app-server`, account/rateLimits/read).
+# It reads the account's numbers and sends no message, so it costs no quota. Kept for LIVE_AGE.
+# Plain bash 3.2 (no coproc): requests go in through a FIFO, the reply is read from a file.
+codex_live() {
+  local dir pid i
+  [ -n "$(find "$STATE/codex.live" -mmin -"$LIVE_AGE" 2>/dev/null)" ] && { cat "$STATE/codex.live"; return 0; }
+  command -v codex >/dev/null || return 1
+  dir=$(mktemp -d "$STATE/live.XXXXXX") && mkfifo "$dir/in" || return 1
+  perl -e 'alarm 20; exec @ARGV' codex app-server <"$dir/in" >"$dir/out" 2>/dev/null & pid=$!
+  exec 8>"$dir/in"
+  printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"clientInfo":{"name":"usageforge","version":"'"$VERSION"'"}}}' \
+    '{"jsonrpc":"2.0","method":"initialized"}' '{"jsonrpc":"2.0","id":2,"method":"account/rateLimits/read"}' >&8
+  for i in $(seq 100); do grep -q '"id":2' "$dir/out" 2>/dev/null && break; kill -0 "$pid" 2>/dev/null || break; sleep 0.2; done
+  exec 8>&-; kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+  grep -h '"id":2' "$dir/out" 2>/dev/null | jq -c 'select(.result.rateLimits.primary != null) | .result.rateLimits |
+    {primary: {used_percent: .primary.usedPercent, resets_at: .primary.resetsAt},
+     secondary: (.secondary | if . then {used_percent: .usedPercent, resets_at: .resetsAt} else null end)}' >"$dir/r" 2>/dev/null
+  [ -s "$dir/r" ] && mv -f "$dir/r" "$STATE/codex.live"
+  rm -rf "$dir"
+  [ -s "$STATE/codex.live" ] && [ -n "$(find "$STATE/codex.live" -mmin -"$LIVE_AGE")" ] && cat "$STATE/codex.live"
+}
+
+# Codex's limits: live when the CLI can say, else the newest rate_limits in its session logs.
+# Newest by time, not the latest reset: after switching accounts, the old account's window can end
+# later than the current one's. Hitting the limit logs an error, not new numbers: then the window
+# counts as full until it resets.
 codex_limits() {
+  codex_live && return 0
   find "$SESSIONS" -name 'rollout-*.jsonl' -mtime -8 -exec ls -t {} + 2>/dev/null | head -5 |
     while IFS= read -r f; do grep -h -e '"rate_limits"' -e usage_limit_exceeded "$f"; done |
     jq -sc 'def secs: sub("\\.[0-9]+"; "") | fromdateiso8601;
@@ -109,10 +138,10 @@ codex_limits() {
 }
 
 # Live Claude usage from Claude Code's own `/usage` command: it runs locally and sends no message,
-# so it costs no quota. Saved at most once a minute; also tells the scheduler the real reset time.
+# so it costs no quota. Kept for LIVE_AGE; also tells the scheduler the real reset time.
 claude_usage() {
   local rep safe=()
-  [ -n "$(find "$STATE/claude.limits" -mmin -1 2>/dev/null)" ] && return 0
+  [ -n "$(find "$STATE/claude.limits" -mmin -"$LIVE_AGE" 2>/dev/null)" ] && return 0
   claude --help 2>/dev/null | grep -q -- --safe-mode && safe=(--safe-mode)
   rep=$(cd "$STATE" && limit claude -p "/usage" --tools "" ${safe[@]+"${safe[@]}"} --setting-sources project \
           --strict-mcp-config --no-session-persistence --output-format stream-json --verbose 2>/dev/null |
@@ -189,7 +218,8 @@ ping_codex() {
     # Out of usage: not worth retrying. reset_at reads the window's end from the log.
     grep -q "hit your usage limit" "$STATE/codex.err" && return 2
     tail -n 5 "$STATE/codex.err" >>"$STATE/log"; return 1; }
-  # Trust the reset time Codex just logged; if a window was already open it ends sooner than 5h from now.
+  # Trust the reset time Codex now reports; if a window was already open it ends sooner than 5h from now.
+  rm -f "$STATE/codex.live"
   local r; r=$(int "$(codex_limits | jq '.primary.resets_at // 0' 2>/dev/null)")
   echo $(( r > $(now) ? r : $(now) + 18000 )) >"$STATE/codex.reset"
 }
@@ -251,6 +281,7 @@ due() {
 
 tick() {
   local t
+  LIVE_AGE=${UF_LIVE_AGE:-15}
   [ "$(wc -l 2>/dev/null <"$STATE/log" || echo 0)" -gt 2000 ] && { tail -n 1000 "$STATE/log" >"$STATE/log.tmp" && mv -f "$STATE/log.tmp" "$STATE/log"; }
   for t in claude codex; do
     if ! command -v "$t" >/dev/null; then
