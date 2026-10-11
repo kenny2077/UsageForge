@@ -29,7 +29,7 @@ STATE = Path(os.environ.get("UF_STATE") or Path.home() / ".local/state/usageforg
 ASSETS = (HERE.parent / "docs" / "assets").resolve()
 TOKEN = secrets.token_urlsafe(24)
 sys.path.insert(0, str(HERE))
-import dawn  # noqa: E402
+import hole  # noqa: E402
 TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2"}
 # The tools' own app icons, read from the apps you have installed (nothing is bundled).
 ICONS = {
@@ -69,6 +69,17 @@ def clean_tool(c):
     return {"mode": c["mode"], "times": times, "days": days, "prompt": clean_prompt(c.get("prompt")), "model": model}
 
 
+def clean_night(n):
+    """Night hours from the browser. The daily wake is only set by `usageforge night wake`, so it's kept as saved."""
+    if any(not TIME.match(str(n.get(k, ""))) for k in ("from", "to")):
+        raise ValueError("night hours need a start and an end, like 23:30 and 08:00")
+    try:
+        saved = json.loads((STATE / "config.json").read_text()).get("night") or {}
+    except (OSError, ValueError):
+        saved = {}
+    return {"on": n.get("on") is True, "from": n["from"], "to": n["to"], "wake": saved.get("wake") is True}
+
+
 def cli(*args, timeout):
     return subprocess.run([CLI, *args], capture_output=True, text=True, timeout=timeout,
                           env={**os.environ, "UF_STATE": str(STATE)})
@@ -86,13 +97,8 @@ def icon(tool):
     return cache.read_bytes() if cache.is_file() else None
 
 
-@lru_cache(maxsize=1)
-def dawn_png():
-    return dawn.png(120, 44)
-
-
 def hello(url):
-    """What `usageforge ui` prints: the dawn coming up, then the setup check, in the panel's colours."""
+    """What `usageforge ui` prints: the black hole turning, then the setup check, in the panel's colours."""
     if not sys.stdout.isatty() or os.environ.get("NO_COLOR") or os.environ.get("TERM") == "dumb":
         return print(f"UsageForge control panel: {url}  (Ctrl+C to quit)")
     true = os.environ.get("COLORTERM") in ("truecolor", "24bit")
@@ -104,13 +110,13 @@ def hello(url):
 
     size = shutil.get_terminal_size()
     if size.columns >= 68:
-        # A five-second dawn would be a wait; this one is under a second.
-        for i in range(9):
+        # The disk turns for under a second, then holds still above the setup check.
+        for i in range(12):
             if i:
                 sys.stdout.write("\x1b[14A")
-            sys.stdout.write(dawn.ansi(64, 28, 0.25 + i * 0.75 / 8, true))
+            sys.stdout.write(hole.ansi(64, 28, i * 0.3, true))
             sys.stdout.flush()
-            time.sleep(0.04)
+            time.sleep(0.05)
     print()
     print("  " + ink(TITLE, "UsageForge") + ink(MUTED, "  starts your 5-hour window on your schedule"))
     print()
@@ -174,8 +180,6 @@ class Handler(BaseHTTPRequestHandler):
             f = (ASSETS / path[len("/assets/"):]).resolve()
             if ASSETS in f.parents and f.is_file() and f.suffix in TYPES:
                 return self.reply(200, f.read_bytes(), TYPES[f.suffix])
-        if path == "/dawn.png":
-            return self.reply(200, dawn_png(), "image/png")
         if path.startswith("/icons/") and path.endswith(".png"):
             png = icon(path[len("/icons/"):-len(".png")])
             if png:
@@ -198,7 +202,8 @@ class Handler(BaseHTTPRequestHandler):
             if self.path == "/api/config":
                 config = {t: clean_tool(body[t]) for t in TOOLS if t in body}
                 notes = body.get("notify") or {}
-                config["notify"] = {k: notes[k] for k in ("started", "problems", "weekly") if type(notes.get(k)) is bool}
+                config["notify"] = {k: notes[k] for k in ("problems",) if type(notes.get(k)) is bool}
+                config["night"] = clean_night(body.get("night") or {})
                 STATE.mkdir(parents=True, exist_ok=True)
                 tmp = STATE / "config.json.tmp"
                 tmp.write_text(json.dumps(config, indent=2))
@@ -215,6 +220,12 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError(r.stderr.strip() or "couldn't change the background check")
                     now = status()
                 return self.reply(200, now)
+            if self.path == "/api/night-wake":
+                # macOS asks for the password in its own dialog; this waits for it.
+                r = cli("night", "wake" if body.get("wake") else "nowake", timeout=300)
+                if r.returncode:
+                    raise ValueError(r.stderr.strip() or "couldn't change the daily wake")
+                return self.reply(200, status())
             if self.path == "/api/notify-test":
                 cli("notify-test", timeout=30)
                 return self.reply(200, {"ok": True})

@@ -121,7 +121,7 @@ EOF
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.installed and (.config.claude.mode == "schedule")' >/dev/null ||
   { echo "FAIL: status --json"; exit 1; }
 
-# Notifications: problems once per 6 h, "window started" only when switched on, never for manual pings.
+# Notifications: problems only, once per 6 h, never for manual pings; switching them off works.
 if [ "$(uname)" = Darwin ]; then
   rm -f "$T/notes"
   notes() { cat "$T/notes" 2>/dev/null | wc -l | tr -d ' '; }
@@ -131,20 +131,58 @@ if [ "$(uname)" = Darwin ]; then
   cat >"$T/bin/claude" <<EOF
 #!/bin/sh
 [ "\$1" = --help ] && exit 0
-[ "\$2" = /usage ] && { echo '{"usage_report":{"rate_limits":{"limits":[{"kind":"session","percent":1},{"kind":"weekly_all","percent":95}]}}}'; exit 0; }
+[ "\$2" = /usage ] && exit 0
 [ "\$1" = auth ] && { echo '{"loggedIn":true}'; exit 0; }
 echo '{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","unifiedWindows":{"five_hour":{"resetsAt":$FUTURE},"seven_day":{"utilization":0.95}}}}'
 EOF
   rm -f "$T/state/claude.backoff"; echo 1 >"$T/state/claude.reset"
-  cfg '{"claude":{"mode":"watch"},"codex":{"mode":"off"},"notify":{"started":true}}'
-  lk tick
-  grep -q "new window" "$T/notes" || { echo "FAIL: started notification missing"; exit 1; }
-  grep -q "95% of this week" "$T/notes" || { echo "FAIL: weekly notification missing"; exit 1; }
+  cfg '{"claude":{"mode":"watch"},"codex":{"mode":"off"}}'
+  before=$(notes); lk tick
+  [ "$(notes)" = "$before" ] || { echo "FAIL: a window starting should not notify"; exit 1; }
+  rm -f "$T/state/"*.note; printf '#!/bin/sh\nexit 1\n' >"$T/bin/claude"
+  cfg '{"claude":{"mode":"watch"},"codex":{"mode":"off"},"notify":{"problems":false}}'; echo 1 >"$T/state/claude.reset"
+  UF_WHY=watch lk ping claude || true
+  [ "$(notes)" = "$before" ] || { echo "FAIL: problems switched off should not notify"; exit 1; }
+  cat >"$T/bin/claude" <<EOF
+#!/bin/sh
+[ "\$1" = --help ] && exit 0
+[ "\$1" = auth ] && { echo '{"loggedIn":true}'; exit 0; }
+exit 0
+EOF
   before=$(notes); lk ping claude
   [ "$(notes)" = "$before" ] || { echo "FAIL: manual ping should not notify"; exit 1; }
   HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge doctor | grep -q "signed in" || { echo "FAIL: doctor"; exit 1; }
   cfg '{"claude":{"mode":"schedule","times":[]}}'
   ! HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge doctor >/dev/null || { echo "FAIL: doctor should flag no times"; exit 1; }
+fi
+
+# Night hours: sleep once agents are done and nobody is at the Mac; stay up while one works.
+if [ "$(uname)" = Darwin ]; then
+  printf '#!/bin/sh\necho "pmset $*" >>"%s/power"\n' "$T" >"$T/bin/pmset"
+  printf '#!/bin/sh\necho "caffeinate $*" >>"%s/power"\n' "$T" >"$T/bin/caffeinate"
+  printf '#!/bin/sh\necho "  |   \\"HIDIdleTime\\" = $(cat "%s/idle")000000000"\n' "$T" >"$T/bin/ioreg"
+  chmod +x "$T/bin/pmset" "$T/bin/caffeinate" "$T/bin/ioreg"
+  power() { cat "$T/power" 2>/dev/null | grep -c "$1"; }
+  find "$T/home" -name '*.jsonl' -exec touch -t 202001010000 {} +
+  night='"night":{"on":true,"from":"'$(date -v-1H +%H:%M)'","to":"'$(date -v+1H +%H:%M)'"}'
+  cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},'"$night"'}'
+  echo 100 >"$T/idle"; lk tick
+  [ "$(power sleepnow)" = 0 ] || { echo "FAIL: night should not sleep while someone uses the Mac"; exit 1; }
+  echo 700 >"$T/idle"; lk tick
+  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: night should sleep once agents are done"; exit 1; }
+  mkdir -p "$T/home/.claude/projects/p"; touch "$T/home/.claude/projects/p/s.jsonl"; lk tick; sleep 1   # caffeinate starts in the background
+  [ "$(power sleepnow)" = 1 ] && [ "$(power caffeinate)" = 1 ] || { echo "FAIL: night should keep the Mac up while an agent works"; exit 1; }
+  rm -rf "$T/home/.claude/projects"
+  cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},"night":{"on":false}}'; lk tick
+  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: night hours off should never sleep"; exit 1; }
+  # The daily wake: a minute after the first set time inside night hours, on its days.
+  cfg '{"claude":{"mode":"schedule","times":["14:00","06:00"],"days":[1,2,3,4,5]},"codex":{"mode":"off"},"night":{"on":true,"from":"23:00","to":"08:00"}}'
+  lk night wake
+  grep -q "pmset repeat wakeorpoweron MTWRF 06:01:00" "$T/notes" || { echo "FAIL: daily wake not set"; exit 1; }
+  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.night.want == .night.set and .config.night.wake' >/dev/null ||
+    { echo "FAIL: status should show the wake that was set"; exit 1; }
+  ! lk night 25:00 08:00 2>/dev/null || { echo "FAIL: bad night time accepted"; exit 1; }
+  rm -f "$T/bin/pmset" "$T/bin/caffeinate" "$T/bin/ioreg"
 fi
 
 # Live Claude usage from `claude -p /usage` (sends no message): numbers and the real reset time.
@@ -200,12 +238,13 @@ python3 ui/server.py ./usageforge --no-open --port 4598 >/dev/null 2>&1 & P=$!; 
 python3 ui/server.py ./usageforge --no-open --port 4598 2>&1 | grep -q "already running" || { kill $P; echo "FAIL: second ui"; exit 1; }
 kill $P; wait $P 2>/dev/null || true
 # Upgraded under a running panel (Homebrew deletes the old files): say so and free the port.
-cp -R ui "$T/ui"; python3 -B "$T/ui/server.py" ./usageforge --no-open --port 4598 >/dev/null 2>&1 & P=$!; sleep 1
+cp -R ui "$T/ui"; python3 -B "$T/ui/server.py" ./usageforge --no-open --port 4597 >/dev/null 2>&1 & P=$!; sleep 1
 rm "$T/ui/index.html"
-[ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4598/)" = 503 ] || { kill $P; echo "FAIL: panel with its files gone"; exit 1; }
+[ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4597/)" = 503 ] || { kill $P; echo "FAIL: panel with its files gone"; exit 1; }
 sleep 1; ! kill -0 $P 2>/dev/null || { kill $P; echo "FAIL: panel should exit once its files are gone"; exit 1; }
-# The pixel dawn: a valid PNG, and 14 terminal rows for 28 pixels.
-python3 -B -c "import sys; sys.path.insert(0, 'ui'); import dawn
-assert dawn.png(8, 4)[:8] == b'\\x89PNG\\r\\n\\x1a\\n'
-assert dawn.ansi(64, 28).count(chr(10)) == 14" || { echo "FAIL: dawn"; exit 1; }
+# The pixel black hole: 14 terminal rows for 28 pixels, a dark shadow in the middle, a lit disk around it.
+python3 -B -c "import sys; sys.path.insert(0, 'ui'); import hole
+assert hole.ansi(64, 28).count(chr(10)) == 14
+px = hole.pixels(64, 28)
+assert px[12][32] == hole.VOID and any(c in hole.DISK[4:] for row in px for c in row)" || { echo "FAIL: black hole"; exit 1; }
 echo PASS

@@ -36,20 +36,32 @@ UsageForge pings whichever of the two it finds.
 usageforge ui        # opens http://127.0.0.1:4517 in your browser (needs python3)
 ```
 
-The terminal shows a small pixel dawn and the same setup check as `usageforge doctor`. The first time the panel opens, a short guide points out each part; **Guide** in the header replays it.
+The terminal shows a small pixel black hole and the same setup check as `usageforge doctor`. At the top of the panel a black hole drawn in dots turns while the background check runs and holds still when it's off. The first time the panel opens, a short guide points out each part; **Guide** in the header replays it.
 
 The panel has one section each for Claude Code and Codex. In each you can:
 - pick a mode: **Off**, **At set times** or **Back to back**
 - add ping times and choose the weekdays they run on, with a 24-hour preview of the windows they open
 - set the message and model
 
-Each section also shows the 5-hour and weekly meters. Changes save automatically, and the background check turns itself on or off to match.
+Below them, **Night hours** (macOS) and **Notify me**. Each section also shows the 5-hour and weekly meters. Changes save automatically, and the background check turns itself on or off to match.
 The panel only listens on 127.0.0.1, and every request must carry a random token that's created each time the panel starts.
+
+## Night hours (macOS)
+
+Going to bed while Claude Code or Codex is still working? Between the hours you set, UsageForge keeps the Mac awake while an agent is working (its session log changed in the last 10 minutes), then puts it to sleep once they've finished and nobody has touched the Mac for 10 minutes. It stays up if a set time is less than 15 minutes away. Outside night hours it never sleeps the Mac.
+
+```bash
+usageforge night 23:30 08:00   # night hours on
+usageforge night wake          # also wake the Mac a minute after your first set time inside them (asks for your password)
+usageforge night nowake        # stop the daily wake
+usageforge night off
+```
+
+The wake uses `pmset repeat wakeorpoweron`, which needs your password once and holds one daily wake. If you change your set times, run `usageforge night wake` again; `doctor` and the panel tell you when it's out of date. `nowake` runs `pmset repeat cancel`, which also clears any repeating wake you set yourself. Closing the lid still sleeps the Mac, as always.
 
 ## Notifications
 
-UsageForge sends a notification when something goes wrong (offline, signed out, or a usage limit reached). It also notifies you when this week's usage passes 90%. Each kind of problem notifies you at most once every 6 hours.
-A notification each time a window starts is off by default. Turn the types on or off under **Notify me** in the control panel.
+UsageForge sends a notification only when something goes wrong (offline, signed out, or a usage limit reached), at most once every 6 hours for each kind of problem. Turn it off under **Notify me** in the control panel.
 
 ## Modes from the terminal
 
@@ -99,7 +111,7 @@ There's one background check, run every 5 minutes. It re-reads the settings each
 ## Caveats
 
 - **A sleeping laptop can't send anything.** launchd runs a missed job as soon as the Mac wakes.
-  To wake the Mac for a 6:00 ping: `sudo pmset repeat wakeorpoweron MTWRFSU 05:58:00`.
+  To wake the Mac for your first morning time, use night hours (`usageforge night wake`, above).
   Linux cron skips jobs missed during sleep. Watch mode catches up on its next 5-minute check.
   cron uses the system time zone, which is often UTC on servers.
 - **`claude -p` billing may change.** If Anthropic starts billing it separately (announced, then paused, in 2026), a `claude -p` ping might stop opening the interactive window. See `docs/research.md`.

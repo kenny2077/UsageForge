@@ -8,12 +8,14 @@
 #   usageforge status [--json]          modes, reset times, recent log
 #   usageforge doctor                   check the setup and say what to fix
 #   usageforge start | stop             turn the background check on / off
+#   usageforge night 23:30 08:00        night hours: sleep the Mac once agents finish (macOS)
+#   usageforge night wake | nowake | off  wake it for the first set time (asks for your password) / stop
 #
 # Settings live in ~/.local/state/usageforge/config.json, per tool: mode, times, days, prompt, model.
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.5.1
+VERSION=3.6.0
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -71,11 +73,11 @@ prompt_for() { local p; p=$(cfg "$1" prompt); p=${p:-$(greet)}; [[ $p == -* ]] &
 
 # ---------- Notifications ----------
 
-# notify <kind> <title> <message>. Kinds: started (off by default), problems, weekly (on by default).
+# notify <kind> <title> <message>. One kind, problems: on unless switched off in the panel.
 notify() {
-  local def=true on; [ "$1" = started ] && def=false
-  on=$(jq -r --arg k "$1" --argjson d "$def" '(.notify // {}) as $n | if ($n | has($k)) then $n[$k] else $d end' "$CONFIG" 2>/dev/null) || on=$def
-  [ "${on:-$def}" = true ] || [ -n "${UF_FORCE:-}" ] || return 0
+  local on
+  on=$(jq -r --arg k "$1" '.notify[$k] | if . == null then true else . end' "$CONFIG" 2>/dev/null) || on=true
+  [ "${on:-true}" = true ] || [ -n "${UF_FORCE:-}" ] || return 0
   if [ "$(uname)" = Darwin ]; then
     # Text goes in as arguments, never into the AppleScript source.
     osascript -e 'on run argv' -e 'display notification (item 2 of argv) with title (item 1 of argv)' -e 'end run' "$2" "$3" >/dev/null 2>&1
@@ -88,12 +90,6 @@ notify() {
 once() { [ -n "$(find "$STATE/$1.note" -mmin -"$2" 2>/dev/null)" ] && return 1; touch "$STATE/$1.note"; }
 mode_name() { case $1 in schedule) echo "At set times" ;; watch) echo "Back to back" ;; *) echo "Off" ;; esac; }
 name_of() { [ "$1" = claude ] && echo "Claude Code" || echo "Codex"; }
-weekly_pct() {
-  local p
-  if [ "$1" = claude ]; then claude_usage; p=$(jq '.unifiedWindows.seven_day.utilization // empty | . * 100 | floor' "$STATE/claude.limits" 2>/dev/null)
-  else p=$(codex_limits | jq '.secondary.used_percent // empty | floor' 2>/dev/null); fi
-  int "$p"
-}
 
 # ---------- Reading the windows ----------
 
@@ -211,10 +207,7 @@ ping() {
       break
     done
     case $rc in
-      0) now >"$STATE/$t.last"; log "pinged $t (${UF_WHY:-manual}), window resets $(fmt "$(reset_at "$t")")"
-         [ "${UF_WHY:-manual}" = manual ] || notify started "$(name_of "$t"): new window" "Started now. Resets at $(fmt "$(reset_at "$t")")."
-         [ "$(weekly_pct "$t")" -ge 90 ] && once "weekly-$t" 1440 &&
-           notify weekly "$(name_of "$t"): $(weekly_pct "$t")% of this week used" "Your weekly limit is close." ;;
+      0) now >"$STATE/$t.last"; log "pinged $t (${UF_WHY:-manual}), window resets $(fmt "$(reset_at "$t")")" ;;
       2) log "$t is rate-limited until $(fmt "$(reset_at "$t")")"
          once "limit-$t" 300 && notify problems "$(name_of "$t"): usage limit reached" "UsageForge waits until $(fmt "$(reset_at "$t")")." ;;
       *) [ "${UF_WHY:-manual}" = manual ] && { log "ping $t failed (offline or logged out?)"; failed=1; continue; }
@@ -270,7 +263,94 @@ tick() {
     [ "$t" = claude ] && [ "$(cfg claude mode)" != off ] && [ -n "$(cfg claude mode)" ] && claude_usage
     due "$t" && { jitter; UF_WHY=$(cfg "$t" mode) ping "$t"; }
   done
+  night_check
   return 0
+}
+
+# ---------- Night hours (macOS) ----------
+# Between bedtime and morning, the Mac sleeps once Claude Code and Codex have finished and nobody is
+# using it; until then it's kept awake. A daily wake can bring it back for the first set time.
+
+night_cfg() { jq -r --arg k "$1" '.night[$k] // empty | tostring' "$CONFIG" 2>/dev/null; }
+hm() { [[ ${1:-} =~ ^([01]?[0-9]|2[0-3]):([0-5][0-9])$ ]] && echo $(( 10#${BASH_REMATCH[1]} * 60 + 10#${BASH_REMATCH[2]} )); }
+# in_night [minute of day]: inside [bedtime, morning), across midnight.
+in_night() {
+  local f t n; f=$(hm "$(night_cfg from)") t=$(hm "$(night_cfg to)") n=${1:-$(hm "$(date +%H:%M)")}
+  [ -n "$f" ] && [ -n "$t" ] || return 1
+  if [ "$f" -le "$t" ]; then [ "$n" -ge "$f" ] && [ "$n" -lt "$t" ]; else [ "$n" -ge "$f" ] || [ "$n" -lt "$t" ]; fi
+}
+# An agent counts as working while it writes its session log.
+# ponytail: a tool call silent for 10+ min (a long build) looks finished; watch processes if that bites.
+agents_busy() { [ -n "$(find "$HOME/.claude/projects" "$SESSIONS" -name '*.jsonl' -mmin -10 2>/dev/null | head -1)" ]; }
+idle_secs() { int "$(ioreg -c IOHIDSystem 2>/dev/null | awk '/HIDIdleTime/ {print int($NF / 1000000000); exit}')"; }
+# A set time in the next 15 minutes: stay up for it.
+soon() {
+  local t time ts
+  for t in claude codex; do
+    [ "$(cfg "$t" mode)" = schedule ] || continue
+    for time in $(cfg "$t" times); do
+      ts=$(int "$(at "$time" 2>/dev/null)")
+      [ "$ts" -gt "$(now)" ] && [ "$ts" -le $(( $(now) + 900 )) ] && return 0
+    done
+  done
+  return 1
+}
+
+night_check() {
+  [ "$(uname)" = Darwin ] && [ "$(night_cfg on)" = true ] && in_night || return 0
+  if agents_busy; then
+    # Hold off idle sleep until the next check (the plist lets this outlive the tick).
+    caffeinate -i -t 330 >/dev/null 2>&1 &
+    return 0
+  fi
+  [ "$(idle_secs)" -ge 600 ] && ! soon || return 0
+  log "night: agents are done and nobody is using the Mac; going to sleep"
+  pmset sleepnow >/dev/null 2>&1
+}
+
+# The daily wake: one minute after the first set time inside night hours, on the days it runs.
+# ponytail: pmset keeps one repeating wake, so later night times and per-day differences don't get their own.
+wake_want() {
+  local t time m best="" days="" first="" f letters
+  f=$(hm "$(night_cfg from)") || return 0
+  for t in claude codex; do
+    [ "$(cfg "$t" mode)" = schedule ] || continue
+    for time in $(cfg "$t" times); do
+      m=$(hm "$time") && in_night "$m" || continue
+      # Order from bedtime, so 06:00 comes before 00:30 only if bedtime is after 00:30.
+      [ -z "$best" ] || [ $(( (m - f + 1440) % 1440 )) -lt $(( (best - f + 1440) % 1440 )) ] && best=$m
+      days+=" $(cfg "$t" days)"
+    done
+  done
+  [ -n "$best" ] || return 0
+  [ -n "${days// /}" ] || days="0 1 2 3 4 5 6"
+  letters=UMTWRFS   # pmset's day letters, Sunday first like the config
+  for t in 0 1 2 3 4 5 6; do [[ " $days " == *" $t "* ]] && first+=${letters:t:1}; done
+  m=$(( (best + 1) % 1440 ))
+  printf '%s %02d:%02d:00\n' "$first" $(( m / 60 )) $(( m % 60 ))
+}
+
+# The password dialog is macOS's own; nothing here sees it.
+admin() { osascript -e "do shell script \"$1\" with administrator privileges" >/dev/null; }
+
+night() {
+  local w
+  case ${1:-} in
+    off) set_night '{on: false}'; echo "night hours off" ;;
+    wake)
+      w=$(wake_want)
+      [ -n "$w" ] || { echo "no set time falls inside night hours, so there's nothing to wake for" >&2; exit 1; }
+      admin "/usr/bin/pmset repeat wakeorpoweron $w" || { echo "not changed (no password given)" >&2; exit 1; }
+      echo "$w" >"$STATE/night.wake"; set_night '{wake: true}'; echo "the Mac wakes $w" ;;
+    nowake)
+      admin "/usr/bin/pmset repeat cancel" || { echo "not changed (no password given)" >&2; exit 1; }
+      rm -f "$STATE/night.wake"; set_night '{wake: false}'; echo "no more daily wake" ;;
+    *) hm "${1:-}" >/dev/null && hm "${2:-}" >/dev/null || { echo "usage: usageforge night 23:30 08:00 | wake | nowake | off" >&2; exit 1; }
+       set_night "{on: true, from: \"$1\", to: \"$2\"}"; echo "night hours $1 to $2: the Mac sleeps once agents finish" ;;
+  esac
+}
+set_night() {
+  { [ -s "$CONFIG" ] && cat "$CONFIG" || echo '{}'; } | jq ".night = ((.night // {}) + $1)" >"$CONFIG.tmp" && mv -f "$CONFIG.tmp" "$CONFIG"
 }
 
 # ---------- Installing the check ----------
@@ -301,6 +381,7 @@ start() {
   </dict>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
+  <key>AbandonProcessGroup</key><true/>
   <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>$(xml "$STATE/log")</string>
 </dict></plist>
@@ -388,7 +469,8 @@ status_json() {
   jq -n --argjson tools "$tools" --argjson config "$( [ -s "$CONFIG" ] && cat "$CONFIG" || echo '{}')" \
     --argjson running "$(running && echo true || echo false)" --argjson now "$(now)" \
     --arg log "$(tail -n 40 "$STATE/log" 2>/dev/null)" \
-    '{now: $now, running: $running, config: $config, tools: $tools,
+    --arg want "$(wake_want)" --arg set "$(cat "$STATE/night.wake" 2>/dev/null)" \
+    '{now: $now, night: {want: $want, set: $set}, running: $running, config: $config, tools: $tools,
       log: ($log | split("\n") | map(select(length > 0)))}'
 }
 
@@ -431,7 +513,15 @@ doctor() {
   fi
   n=$(grep -c "$(date +%F).*failed" "$STATE/log" 2>/dev/null); n=$(int "$n")
   [ "$n" -gt 0 ] && warn "$n failed message(s) today; see 'usageforge status'"
-  [ "$(uname)" = Darwin ] && echo "Tip: your Mac must be awake for messages to go out. Keep it plugged in, or see the README on scheduled wake."
+  if [ "$(night_cfg on)" = true ]; then
+    echo "Night hours ($(night_cfg from) to $(night_cfg to))"
+    ok "the Mac sleeps once Claude Code and Codex have finished"
+    if [ "$(night_cfg wake)" = true ]; then
+      [ "$(wake_want)" = "$(cat "$STATE/night.wake" 2>/dev/null)" ] && ok "wakes $(cat "$STATE/night.wake")" ||
+        warn "your set times changed: run 'usageforge night wake' to move the daily wake"
+    fi
+  fi
+  [ "$(uname)" = Darwin ] && echo "Tip: your Mac must be awake for messages to go out. Keep it plugged in, or let night hours wake it: 'usageforge night'."
   [ $bad = 0 ] && echo "All good." || echo "Fix the ✗ items above."
   return $bad
 }
@@ -452,6 +542,7 @@ case "${1:-}" in
   stop) stop ;;
   status) case ${2:-} in --json) status_json ;; "") status ;; *) echo "usage: usageforge status [--json]" >&2; exit 1 ;; esac ;;
   doctor) doctor ;;
+  night) shift; night "$@" ;;
   notify-test) UF_FORCE=1 notify problems "UsageForge" "Notifications work. You'll hear from us when something needs you." ;;
   ui) command -v python3 >/dev/null || { echo "usageforge ui needs python3" >&2; exit 1; }
       [ -f "$(dirname "$SELF")/ui/server.py" ] || { echo "run 'usageforge ui' from the UsageForge repo" >&2; exit 1; }
