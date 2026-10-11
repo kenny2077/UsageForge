@@ -23,7 +23,7 @@ OWN-WORLD: Near-black navy ground (#06080d) with a faint dot field; cool star-du
 
 STORY: You open it and see at once whether it's running (the disk turns), when the next window starts, and how much is used; you change a time by clicking the day; at night it tells you the Mac will sleep once your agents finish.
 
-FIRST VIEWPORT: Top: a full-width sky, about 280px, canvas black hole right of centre; brand mark and name top-left; Guide and Help top-right; over the lower left of the sky, the engine line ("Running · checks every 5 minutes") and the next event. Below: Claude Code and Codex side by side, each: header with icon and next time, two dot meters, a three-way mode control, the 24-hour day bar. Then Night hours, Notify, Activity.
+FIRST VIEWPORT: Top: a full-width sky, about 280px, canvas black hole right of centre; brand mark and name top-left; Guide and Help top-right; the sky carries no caption (the turning disk says it runs; each tool shows its next time), except "Reconnecting…" when the panel loses its server. Below: Claude Code and Codex side by side, each: header with icon and next time, two dot meters, a three-way mode control, the 24-hour day bar. Then Sleep and wake (the two switches side by side), Activity.
 
 FORM: Pinned by the user (universe / black hole), no roll; concept-seed not run. Seed key: none (pinned).
 

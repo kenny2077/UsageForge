@@ -178,7 +178,7 @@ The page ground `#04060c` is the GIF's own ground, so the image has no visible e
 **Character:** Jost is geometric and quiet, like the labels on a star atlas; the mono gives every time and number a fixed, instrument-like width.
 
 ### Hierarchy
-- **Display**: the engine line over the sky ("Running"), one per page; 28px on phones.
+- **Display**: the "Reconnecting…" line over the sky, shown only when the panel loses its server; 28px on phones.
 - **Headline**: tool names and the Sleep and wake heading; the guide card heading runs a step larger (24px).
 - **Title**: secondary section heads (Activity).
 - **Body**: default copy; questions above controls run at 15.5px/500. Long explanations cap at 64-72ch.
@@ -193,7 +193,7 @@ The page ground `#04060c` is the GIF's own ground, so the image has no visible e
 
 ## Layout
 
-A full-width sky (400px desktop; on phones the image runs full width and the engine line drops below it) carries the brand top-left, Guide top-right, and the engine line and next event over its lower left. The image fades out at its edges through a radial mask.
+A full-width sky (400px desktop; on phones the image runs full width and the engine line drops below it) carries the brand top-left and Guide top-right; nothing else sits over it unless the panel loses its server ("Reconnecting…", lower left). The image fades out at its edges through a radial mask.
 
 Below, a centered column with a fluid gutter (16px to 44px, centering at 1320px max width). The two tool panels sit side by side with a 44px column gap, collapsing to one column under 1080px. Sleep and wake, then Activity, run full width beneath.
 
