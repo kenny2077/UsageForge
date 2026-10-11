@@ -271,7 +271,7 @@
       },
       "title": {
         "displayName": "Title",
-        "purpose": "Notify me, Activity."
+        "purpose": "Activity."
       },
       "body": {
         "displayName": "Body",
@@ -365,7 +365,7 @@
       "starTerminal": "#606c8c",
       "dust": "#7f8db0",
       "void": "#06080d",
-      "purpose": "Shared by the panel canvas and ui/hole.py."
+      "purpose": "Shared by the panel sky image and ui/hole.bin."
     }
   },
   "components": [
@@ -441,7 +441,7 @@
   ],
   "narrative": {
     "northStar": "The Watched Black Hole",
-    "overview": "The background check is a black hole you can watch. Across the top, a dot-drawn, ray-traced accretion disk turns while UsageForge runs and hangs still when it is off, idle, hidden, or when the reader asks for reduced motion. Everything below sits on the same night ground and speaks the same grammar: dots. Usage meters are rows of lit dots, the day bar's track is a dot grid, mode choices carry little dot glyphs, status is one dot.\n\nLight comes from the disk. Its ember, gold and hot cream carry active state, selection and primary actions; the photon ring's ice blue carries focus, links and \"now\". Everything else is cool star dust on near-black navy. The panel is calm and dense enough to read at a glance, with no cards: parts sit directly on the ground, opened by hairlines.\n\nIt refuses the default dark dashboard: no neon accent, no glowing edges, no card grid, no glass.",
+    "overview": "The background check is a black hole you can watch. Across the top, the author's own black hole (a looping image the browser plays) turns while UsageForge runs and hangs still, dimmed, when it is off or the reader asks for reduced motion. Everything below sits on the same night ground and speaks the same grammar: dots. Usage meters are rows of lit dots, the day bar's track is a dot grid, mode choices carry little dot glyphs, status is one dot.\n\nLight comes from the disk. Its ember, gold and hot cream carry active state, selection and primary actions; the photon ring's ice blue carries focus, links and \"now\". Everything else is cool star dust on near-black navy. The panel is calm and dense enough to read at a glance, with no cards: parts sit directly on the ground, opened by hairlines.\n\nIt refuses the default dark dashboard: no neon accent, no glowing edges, no card grid, no glass.",
     "keyCharacteristics": [
       "Near-black navy ground with a faint 14px dot field that runs the whole page.",
       "Disk light (ember, gold, hot cream) means \"active / chosen\"; ring ice means \"focus / now / link\".",
@@ -488,7 +488,7 @@
       "**Do** set times and numbers in mono with tabular numerals.",
       "**Do** separate parts with 1px hairlines on the void instead of cards.",
       "**Do** stop the sky when the page is hidden, the tool is off, or the reader asks for reduced motion, and paint one still frame instead.",
-      "**Do** keep the canvas sky and `ui/hole.py` on the same disk ramp, ring and void."
+      "**Do** keep the sky image and `ui/hole.bin` baked from the same GIF, on the same void."
     ],
     "donts": [
       "**Don't** use neon accents, glowing edges or a grid of cards.",

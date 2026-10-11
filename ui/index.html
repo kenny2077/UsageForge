@@ -12,7 +12,7 @@
 
 :root {
   /* Deep space, star dust, and the light of the disk. */
-  --void: #06080d; --hull: #0b0f17; --hull-2: #10151f; --hull-3: #161c29;
+  --void: #04060c; --hull: #0b0f17; --hull-2: #10151f; --hull-3: #161c29;
   --ink: #e8ecf4; --ink-2: #b8c1d2; --muted: #8b95aa; --faint: #7a849a;
   --line: rgba(168, 186, 224, 0.11); --line-2: rgba(168, 186, 224, 0.22);
   --ember: #d27a5f; --gold: #f3b46a; --hot: #ffe2b0; --ring: #bcd7ff; --flare: #ff7a6b;
@@ -26,7 +26,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 html { background: var(--void); color-scheme: dark; scrollbar-color: var(--hull-3) var(--void); }
 /* The sky's faint field of dots carries on down the page. */
-body { margin: 0; min-height: 100vh; color: var(--ink); background: radial-gradient(circle, rgba(127, 141, 176, 0.13) 0.75px, transparent 1.25px) 0 0 / 14px 14px fixed, var(--void); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
+body { margin: 0; min-height: 100vh; color: var(--ink); background: radial-gradient(circle, rgba(127, 141, 176, 0.13) 0.75px, transparent 1.25px) 0 0 / 14px 14px, var(--void); font: 400 15px/1.55 var(--sans); -webkit-font-smoothing: antialiased; }
 h1, h2, h3 { margin: 0; font-weight: 500; line-height: 1.15; letter-spacing: -0.005em; text-wrap: balance; }
 p { margin: 0; text-wrap: pretty; }
 button, input, textarea { font: inherit; color: inherit; }
@@ -37,13 +37,14 @@ button, input, textarea { font: inherit; color: inherit; }
 svg.i { width: 14px; height: 14px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 
 /* ---------- The sky: the background check as a black hole ---------- */
-.sky { position: relative; height: 320px; overflow: hidden; border-bottom: 1px solid var(--line); }
-.sky canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
-.sky::after { content: ""; position: absolute; inset: auto 0 0; height: 44px; pointer-events: none; background: linear-gradient(transparent, var(--void)); }
+.sky { position: relative; height: 400px; overflow: hidden; border-bottom: 1px solid var(--line); }
+/* The author's black hole, a looping image: the browser plays it, nothing is computed here. */
+.hole { position: absolute; top: 50%; right: max(0px, calc((100% - 1440px) / 2)); width: min(960px, 72%); height: auto; transform: translateY(-50%); display: block; user-select: none; pointer-events: none;
+  -webkit-mask-image: radial-gradient(closest-side, #000 72%, transparent); mask-image: radial-gradient(closest-side, #000 72%, transparent); transition: opacity 0.4s; }
+.hole.still { opacity: 0.55; }
 .sky-top { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 22px var(--gutter) 0; }
 .brand { display: inline-flex; align-items: center; gap: 12px; color: var(--ink); text-decoration: none; font-size: 19px; font-weight: 500; letter-spacing: 0.01em; }
 .brand img { width: 44px; height: 24px; image-rendering: pixelated; }
-.links { display: flex; align-items: center; gap: 22px; }
 .link { display: inline-flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; cursor: pointer; color: var(--ink-2); font-size: 14.5px; text-decoration: none; }
 .link:hover { color: var(--ink); }
 .engine { position: absolute; z-index: 1; left: var(--gutter); bottom: 34px; max-width: min(520px, 46%); }
@@ -142,18 +143,22 @@ main { padding: 8px var(--gutter) 72px; }
 .ticks { position: relative; height: 14px; margin-top: 8px; color: var(--faint); font: 500 11px/1 var(--mono); }
 .ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
 .ticks span:first-child { transform: none; } .ticks span:last-child { transform: translateX(-100%); }
-.tip { margin-top: 12px; color: var(--muted); font-size: 13.5px; }
-.tip b { color: var(--ink); font-weight: 500; }
 
-.repeat { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin-top: 18px; }
-.repeat > span { color: var(--ink-2); font-size: 14px; }
+/* Repeat days: a dropdown, closed until you need it */
+.repeat { position: relative; }
+.repeat summary { display: inline-flex; align-items: center; gap: 7px; padding: 7px 12px; border: 1px solid var(--line-2); border-radius: 999px; cursor: pointer; list-style: none; color: var(--muted); font-size: 13.5px; }
+.repeat summary::-webkit-details-marker { display: none; }
+.repeat summary b { color: var(--ink); font-weight: 500; }
+.repeat summary:hover { border-color: rgba(168, 186, 224, 0.36); }
+.repeat[open] summary svg { transform: rotate(180deg); }
+.repeat-menu { position: absolute; z-index: 30; top: calc(100% + 8px); left: 0; display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line-2); border-radius: var(--r); background: var(--hull-2); box-shadow: 0 18px 40px -18px #000; }
 .days { display: flex; gap: 5px; }
 .days button { width: 32px; height: 32px; padding: 0; border: 1px solid var(--line-2); border-radius: 50%; cursor: pointer; color: var(--muted); background: transparent; font-size: 12.5px; font-weight: 500; transition: background 0.2s, color 0.2s, border-color 0.2s; }
 .days button[aria-pressed="true"] { color: var(--gold-ink); border-color: var(--gold); background: var(--gold); }
 .presets { display: flex; gap: 2px; }
 .presets button { padding: 6px 9px; border: 0; border-radius: 6px; cursor: pointer; color: var(--muted); background: none; font-size: 13px; }
 .presets button:hover { color: var(--ink); background: rgba(168, 186, 224, 0.06); }
-.extra { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.extra { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; margin-top: 16px; }
 .exact { display: inline-flex; align-items: center; gap: 6px; border: 0; padding: 0; background: none; cursor: pointer; color: var(--ring); font-size: 13.5px; }
 .exact:hover { color: var(--ink); }
 .adder { display: inline-flex; gap: 8px; vertical-align: middle; }
@@ -168,13 +173,6 @@ textarea { width: 100%; min-height: 64px; resize: vertical; line-height: 1.5; }
 input::placeholder, textarea::placeholder { color: var(--faint); }
 
 /* Message and model */
-details.adv summary { cursor: pointer; list-style: none; display: flex; align-items: center; justify-content: space-between; color: var(--ink-2); font-size: 14px; }
-details.adv summary::-webkit-details-marker { display: none; }
-details.adv summary svg { color: var(--muted); transition: transform 0.2s var(--ease); }
-details.adv[open] summary svg { transform: rotate(180deg); }
-.two { display: grid; grid-template-columns: minmax(0, 1fr) 170px; gap: 12px; margin-top: 14px; }
-.two input { width: 100%; font-family: var(--mono); font-size: 13.5px; }
-.field-label { display: block; margin-bottom: 6px; color: var(--muted); font-size: 13px; }
 
 /* Buttons */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 36px; padding: 8px 15px; border: 1px solid transparent; border-radius: var(--r-sm); cursor: pointer; font-size: 14px; font-weight: 500; color: var(--gold-ink); background: var(--gold); transition: background 0.2s, border-color 0.2s, transform 0.15s var(--ease); white-space: nowrap; }
@@ -199,27 +197,18 @@ details.adv[open] summary svg { transform: rotate(180deg); }
 .switch input:checked + i::after { transform: translateX(16px); background: var(--gold); }
 .switch input:focus-visible + i { outline: 2px solid var(--ring); outline-offset: 3px; }
 
-/* Night hours */
-.night { margin-top: 26px; }
-.night-head { padding: 20px 22px 4px; }
-.night-head .row { display: flex; align-items: center; gap: 16px; }
-.night-head h2 { font-size: 23px; }
-.night-head .switch { margin-left: 18px; }
-.night-head p { margin-top: 8px; color: var(--muted); font-size: 14px; max-width: 72ch; }
-.night-body { display: flex; flex-wrap: wrap; align-items: end; gap: 18px 44px; padding: 16px 22px 22px; }
-.hours { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
-.hours span.to { padding-bottom: 9px; color: var(--muted); font-size: 14px; }
-.wake { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; flex: 1 1 380px; }
-.wake p { flex: 1 1 320px; max-width: 64ch; }
-.wake p { color: var(--ink-2); font-size: 14px; }
-.wake p b { color: var(--ink); font-weight: 500; }
-.night.off .night-body { opacity: 0.6; }
+/* Sleep and wake */
+.night { margin-top: 26px; padding: 20px 22px 22px; }
+.night h2 { margin-bottom: 14px; font-size: 23px; }
+.nrow { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 22px; min-height: 40px; }
+.nrow + .nrow { margin-top: 10px; }
+.nrow .switch { min-width: 220px; color: var(--ink); font-size: 15px; }
+.nrow .note { color: var(--muted); font-size: 14px; }
+.nrow .note b { color: var(--ink-2); font-weight: 500; }
+.hours { display: inline-flex; align-items: center; gap: 10px; color: var(--muted); font-size: 14px; }
 
-/* Notify + Activity */
-.lower { display: grid; grid-template-columns: minmax(0, 1fr); gap: 0; margin-top: 26px; }
-.notes { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 26px; padding: 18px 22px; }
-.notes h3 { font-size: 17px; }
-.notes .btn { margin-left: auto; }
+/* Activity */
+.activity { margin-top: 26px; }
 .activity .head2 { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; padding: 14px 22px; border-bottom: 1px solid var(--line); }
 .activity h3 { font-size: 17px; }
 .synced { margin-left: auto; color: var(--faint); font-size: 12.5px; }
@@ -244,7 +233,7 @@ details.adv[open] summary svg { transform: rotate(180deg); }
 .guide-spot { position: fixed; z-index: 60; pointer-events: none; border-radius: 12px; box-shadow: 0 0 0 200vmax rgba(3, 4, 8, 0.72), inset 0 0 0 2px var(--ring); }
 .guide-card { position: fixed; z-index: 61; width: min(380px, calc(100vw - 32px)); overflow: hidden; border: 1px solid var(--line-2); border-radius: 12px; background: var(--hull-2); box-shadow: 0 30px 60px -24px #000; animation: rise 0.3s var(--ease); }
 .guide-card.wide { width: min(560px, calc(100vw - 32px)); }
-.guide-card canvas { display: block; width: 100%; height: 210px; background: var(--void); }
+.guide-card .art { display: block; width: 100%; height: auto; background: var(--void); }
 .guide-card .body { padding: 20px 22px; }
 .guide-card h3 { margin-bottom: 8px; font-size: 24px; }
 .guide-card p.text { color: var(--ink-2); font-size: 14.5px; }
@@ -261,22 +250,18 @@ details.adv[open] summary svg { transform: rotate(180deg); }
 @media (max-width: 1080px) { .panels { grid-template-columns: 1fr; } }
 @media (max-width: 640px) {
   .sky { height: auto; }
-  .sky canvas { position: relative; height: 230px; }
+  .hole { position: relative; top: auto; right: auto; width: 100%; transform: none; margin-top: 40px; }
   .sky-top { position: absolute; inset: 0 0 auto; padding-top: 16px; }
-  .sky::after { display: none; }
   .engine { position: relative; left: auto; bottom: auto; max-width: none; padding: 4px var(--gutter) 22px; }
   .tool-head { flex-wrap: wrap; } .tool-head > div { flex-basis: calc(100% - 56px); } .state { margin-left: 56px; }
   .band b.long { display: none; } .band b.short { display: block; } .bar.ro .band { padding: 0 4px 0 6px; } .band b.short { font-size: 11.5px; }
   .engine-state { font-size: 28px; }
-  .links a { display: none; }
   .sec, .tool-head, .night-head, .night-body { padding-left: 16px; padding-right: 16px; }
   .meters { padding: 0 16px 18px; }
   .modes { grid-template-columns: 1fr; } .mode { border-left: 0; border-top: 1px solid var(--line); } .mode:first-child { border-top: 0; }
-  .two { grid-template-columns: 1fr; }
   .band { padding: 0 22px 0 6px; } .band span { display: none; } .band b { font-size: 12px; }
   .ticks span:nth-child(even) { display: none; }
   .zones { letter-spacing: 0.02em; }
-  .notes .btn { margin-left: 0; }
   .synced { margin-left: 0; }
 }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
@@ -284,20 +269,16 @@ details.adv[open] summary svg { transform: rotate(180deg); }
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <symbol id="i-out" viewBox="0 0 16 16"><path d="M6 3h7v7M13 3 4 12"/></symbol>
   <symbol id="i-x" viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/></symbol>
   <symbol id="i-down" viewBox="0 0 16 16"><path d="M4 6l4 4 4-4"/></symbol>
   <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
 </svg>
 
 <header class="sky" id="sky">
-  <canvas id="sky-canvas" aria-hidden="true"></canvas>
+  <img class="hole" id="hole" src="/assets/black-hole.gif" alt="" width="1600" height="896" decoding="async">
   <div class="sky-top">
     <a class="brand" href="/"><img src="/assets/usageforge-mark.svg" width="44" height="24" alt="">UsageForge</a>
-    <nav class="links" aria-label="Help">
-      <button type="button" class="link" id="guide-btn">Guide</button>
-      <a class="link" href="https://github.com/kenny2077/UsageForge#readme" target="_blank" rel="noopener noreferrer">Help<svg class="i"><use href="#i-out"/></svg></a>
-    </nav>
+    <button type="button" class="link" id="guide-btn">Guide</button>
   </div>
   <div class="engine" id="engine" role="status">
     <p class="engine-state"><span class="dot"></span><span class="engine-text">Connecting…</span></p>
@@ -310,46 +291,30 @@ details.adv[open] summary svg { transform: rotate(180deg); }
   <div class="panels" id="panels"></div>
 
   <section class="night panel" id="night" aria-labelledby="night-title">
-    <div class="night-head">
-      <div class="row">
-        <h2 id="night-title">Night hours</h2>
-        <label class="switch"><input type="checkbox" id="night-on"><i></i>On</label>
-      </div>
-      <p>While these hours last, your Mac stays awake as long as Claude Code or Codex is still working, then goes to sleep once they've finished and nobody is using it. Close the lid and it sleeps anyway.</p>
+    <h2 id="night-title">Sleep and wake</h2>
+    <div class="nrow">
+      <label class="switch"><input type="checkbox" id="sleep-on"><i></i>Sleep when work is done</label>
+      <span class="hours" id="sleep-hours"><input type="time" id="night-from" value="23:30" aria-label="Sleep from">to<input type="time" id="night-to" value="08:00" aria-label="Sleep until"></span>
     </div>
-    <div class="night-body">
-      <div class="hours">
-        <label><span class="field-label">From</span><input type="time" id="night-from" value="23:30"></label>
-        <span class="to">to</span>
-        <label><span class="field-label">Until</span><input type="time" id="night-to" value="08:00"></label>
-      </div>
-      <div class="wake">
-        <p id="wake-text"></p>
-        <button type="button" class="btn ghost" id="wake-btn"></button>
-      </div>
+    <div class="nrow">
+      <label class="switch"><input type="checkbox" id="wake-on"><i></i>Wake for set times</label>
+      <span class="note" id="wake-note"></span>
+      <button type="button" class="btn ghost hidden" id="allow-btn">Allow</button>
     </div>
   </section>
 
-  <div class="lower">
-    <section class="notes panel" aria-labelledby="notes-title">
-      <h3 id="notes-title">Notify me</h3>
-      <label class="switch"><input type="checkbox" data-note="problems"><i></i>When something goes wrong</label>
-      <button type="button" class="btn ghost" id="test-note">Send a test</button>
-    </section>
-
-    <section class="activity panel" aria-labelledby="act-title">
-      <div class="head2">
-        <h3 id="act-title">Activity</h3>
-        <div class="filter" id="logfilter" role="group" aria-label="Filter activity">
-          <button type="button" data-v="all" aria-pressed="true">All</button>
-          <button type="button" data-v="claude" aria-pressed="false">Claude</button>
-          <button type="button" data-v="codex" aria-pressed="false">Codex</button>
-        </div>
-        <span class="synced" id="synced"></span>
+  <section class="activity panel" aria-labelledby="act-title">
+    <div class="head2">
+      <h3 id="act-title">Activity</h3>
+      <div class="filter" id="logfilter" role="group" aria-label="Filter activity">
+        <button type="button" data-v="all" aria-pressed="true">All</button>
+        <button type="button" data-v="claude" aria-pressed="false">Claude</button>
+        <button type="button" data-v="codex" aria-pressed="false">Codex</button>
       </div>
-      <div class="loglines" id="log"></div>
-    </section>
-  </div>
+      <span class="synced" id="synced"></span>
+    </div>
+    <div class="loglines" id="log"></div>
+  </section>
 </main>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -383,19 +348,19 @@ details.adv[open] summary svg { transform: rotate(180deg); }
         <div class="bar"></div>
         <div class="ticks"></div>
       </div>
-      <p class="tip"></p>
-
       <div class="when">
-        <div class="repeat">
-          <span>Repeat on</span>
-          <div class="days" role="group" aria-label="Days"></div>
-          <div class="presets">
-            <button type="button" data-p="0,1,2,3,4,5,6">Every day</button>
-            <button type="button" data-p="1,2,3,4,5">Weekdays</button>
-            <button type="button" data-p="0,6">Weekends</button>
-          </div>
-        </div>
         <div class="extra">
+          <details class="repeat">
+            <summary>Repeat <b class="repeat-val"></b><svg class="i"><use href="#i-down"/></svg></summary>
+            <div class="repeat-menu">
+              <div class="days" role="group" aria-label="Days"></div>
+              <div class="presets">
+                <button type="button" data-p="0,1,2,3,4,5,6">Every day</button>
+                <button type="button" data-p="1,2,3,4,5">Weekdays</button>
+                <button type="button" data-p="0,6">Weekends</button>
+              </div>
+            </div>
+          </details>
           <button type="button" class="exact"><svg class="i"><use href="#i-plus"/></svg>Add an exact time</button>
           <span class="adder hidden">
             <input type="time" class="new-time" value="06:00" aria-label="Time to add">
@@ -404,14 +369,6 @@ details.adv[open] summary svg { transform: rotate(180deg); }
         </div>
       </div>
     </div>
-
-    <details class="adv sec">
-      <summary>Message and model<svg class="i"><use href="#i-down"/></svg></summary>
-      <div class="two">
-        <label><span class="field-label">Message sent each time</span><textarea class="prompt" maxlength="500" placeholder="Automatic: Good morning, Good afternoon or Good evening"></textarea></label>
-        <label><span class="field-label">Model</span><input type="text" class="model" maxlength="64" spellcheck="false" autocomplete="off"></label>
-      </div>
-    </details>
   </article>
 </template>
 
@@ -425,12 +382,12 @@ const TOOLS = {
 const DAYS = [[1, "M"], [2, "T"], [3, "W"], [4, "T"], [5, "F"], [6, "S"], [0, "S"]];
 const DAY_NAMES = ["Sundays", "Mondays", "Tuesdays", "Wednesdays", "Thursdays", "Fridays", "Saturdays"];
 const DEFAULT = { mode: "off", times: ["06:00"], days: [0, 1, 2, 3, 4, 5, 6], prompt: "", model: "" };
-const NIGHT = { on: false, from: "23:30", to: "08:00" };
+const NIGHT = { sleep: false, wake: true, from: "23:30", to: "08:00" };
 const WINDOW = 5 * 60; // minutes
 const STILL = matchMedia("(prefers-reduced-motion: reduce)");
 
 let state = null;
-let config = { claude: { ...DEFAULT }, codex: { ...DEFAULT }, notify: { problems: true }, night: { ...NIGHT } };
+let config = { claude: { ...DEFAULT }, codex: { ...DEFAULT }, night: { ...NIGHT } };
 let saveTimer = 0;
 let logFilter = "all";
 const els = {};
@@ -498,150 +455,6 @@ function daysText(days) {
   if (s === "1,2,3,4,5") return "on weekdays";
   if (s === "0,6") return "on weekends";
   return "on " + days.slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7)).map((d) => DAY_NAMES[d]).join(", ");
-}
-
-// ---------- The sky: a ray-traced black hole, drawn in dots ----------
-// Adapted from "black hole" by ascii.rest (MIT; see docs/third-party-notices.txt): the same light paths
-// round a Schwarzschild hole and the same turning rings of gas, traced per dot and drawn in colour,
-// with the photon ring picked out. Distances are in Schwarzschild radii.
-function blackHole(cols, rows, { cx = 0.5, cy = 0.5, span = 0.2, out = 15, roll = 0 } = {}) {
-  const S = 2, D = 30, IN = 3, OUT = out, TILT = 0.24, LOOP = 60, BANDS = 14, SPIN = 7;
-  const BMAX = OUT + 4, NB = 1200, H = 0.02, CRIT = 1.5 * Math.sqrt(3);
-  let seed = 17;
-  const rand = () => { seed = (seed + 0x6d2b79f5) | 0; let t = Math.imul(seed ^ (seed >>> 15), 1 | seed); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-  // A ray stays in a plane through the hole; its path depends only on its impact parameter b.
-  // u = 1/r obeys u'' = 1.5u^2 - u in the angle swept from the camera, stepped with RK4.
-  const f = (u) => 1.5 * u * u - u, table = [];
-  for (let n = 0; n < NB; n++) {
-    const b = ((n + 0.5) / NB) * BMAX;
-    let u = 1 / D, w = Math.sqrt(Math.max(0, 1 - (b / D) ** 2)) / b;
-    const us = [u];
-    while (u < 1 && (u > 1 / (OUT + 1) || w > 0) && us.length < 4000) {
-      const k1 = w, l1 = f(u), k2 = w + (H / 2) * l1, l2 = f(u + (H / 2) * k1);
-      const k3 = w + (H / 2) * l2, l3 = f(u + (H / 2) * k2), k4 = w + H * l3, l4 = f(u + H * k3);
-      u += (H / 6) * (k1 + 2 * k2 + 2 * k3 + k4); w += (H / 6) * (l1 + 2 * l2 + 2 * l3 + l4);
-      us.push(u);
-    }
-    table.push(Float32Array.from(us));
-  }
-  const TAB = 256, band = [];
-  for (let b = 0; b < BANDS; b++) {
-    const r = IN + ((OUT - IN) * b) / (BANDS - 1);
-    const turns = Math.max(1, Math.round(SPIN * (IN / r) ** 1.5));
-    const waves = [2, 3, 5, 8, 13].map((k) => [k, rand() * 6.283, (0.5 + rand()) / Math.sqrt(k)]);
-    const tab = new Float32Array(TAB); let lo = Infinity, hi = -Infinity;
-    for (let i = 0; i < TAB; i++) { for (const [k, p, a] of waves) tab[i] += a * Math.sin((k * 2 * Math.PI * i) / TAB + p); lo = Math.min(lo, tab[i]); hi = Math.max(hi, tab[i]); }
-    for (let i = 0; i < TAB; i++) tab[i] = 0.4 + (0.6 * (tab[i] - lo)) / (hi - lo);
-    band.push({ tab, turns });
-  }
-  const cw = (2 * span) / rows, s = Math.sin(TILT), c = Math.cos(TILT);
-  const n = cols * rows, cells = Array.from({ length: n }, () => []), ring = new Float32Array(n), sky = new Uint8Array(n).fill(1);
-  for (let j = 0; j < rows * S; j++) {
-    const y0 = (rows * cy - (j + 0.5) / S) * cw;
-    for (let i = 0; i < cols * S; i++) {
-      const x0 = ((i + 0.5) / S - cols * cx) * cw, k = Math.floor(j / S) * cols + Math.floor(i / S);
-      // A slight roll of the camera tips the disk onto a diagonal.
-      const x = x0 * Math.cos(roll) - y0 * Math.sin(roll), y = x0 * Math.sin(roll) + y0 * Math.cos(roll);
-      const len = Math.hypot(x, y, 1), d = [x / len, (y * c - s) / len, (y * s + c) / len];
-      const o = d[1] * s - d[2] * c, side = Math.sqrt(1 - o * o);
-      const e2 = [d[0] / side, (d[1] - o * s) / side, (d[2] + o * c) / side];
-      const b = D * side;
-      if (Math.abs(b - CRIT) < 0.07) ring[k] += 1 / (S * S);
-      if (b >= BMAX) continue;
-      const us = table[Math.min(NB - 1, Math.floor((b * NB) / BMAX))];
-      if (us[us.length - 1] >= 1) sky[k] = 0;
-      const end = Math.min((us.length - 1) * H, 5.6);
-      let light = 1;
-      for (let a = (Math.atan2(-s, e2[1]) + 2 * Math.PI) % Math.PI; a < end; a += Math.PI) {
-        const p = a / H, q = Math.floor(p);
-        const r = 1 / (us[q] + (us[q + 1] - us[q]) * (p - q));
-        if (r <= IN || r >= OUT) continue;
-        const phi = Math.atan2(Math.sin(a) * e2[2] - Math.cos(a) * c, Math.sin(a) * e2[0]);
-        const edge = Math.min(1, (r - IN) / 0.7) * (1 - ((r - IN) / (OUT - IN)) ** 2);
-        const doppler = 1 - 0.55 * Math.cos(phi);
-        const pos = ((r - IN) / (OUT - IN)) * (BANDS - 1), b0 = Math.min(BANDS - 2, Math.floor(pos));
-        sky[k] = 0;
-        cells[k].push(b0, pos - b0, phi, (light * edge * doppler * (IN / r) ** 1.2) / (S * S));
-        light *= 0.45; // seen through the disk, dimmer
-      }
-    }
-  }
-  const stars = Array.from({ length: n }, (_, k) => (sky[k] && rand() < 0.035 ? 0.4 + rand() * 0.6 : 0));
-  const twinkle = Array.from({ length: n }, () => rand() * 6.283);
-  const at = (b, a) => { const i = Math.floor((a / (2 * Math.PI)) * TAB) % TAB; return band[b].tab[i < 0 ? i + TAB : i]; };
-  const v = new Float32Array(n);
-  // Brightness of every dot at t seconds: disk light 0..1, plus the ring and the stars.
-  return (t) => {
-    const turn = (2 * Math.PI * (t % LOOP)) / LOOP;
-    for (let k = 0; k < n; k++) {
-      const h = cells[k]; let sum = 0;
-      for (let i = 0; i < h.length; i += 4) {
-        const bb = h[i], fr = h[i + 1], phi = h[i + 2];
-        const g0 = at(bb, phi - band[bb].turns * turn), g1 = at(bb + 1, phi - band[bb + 1].turns * turn);
-        sum += h[i + 3] * (g0 + (g1 - g0) * fr);
-      }
-      v[k] = Math.min(1, Math.max(0, sum * 1.7 - 0.03) / 0.97) ** 0.7;
-    }
-    return { v, ring, stars, twinkle };
-  };
-}
-
-// Disk light from deep ember to white-hot; the ring in ice; the field and stars in star dust.
-const DISK = ["#5b3036", "#86463f", "#b45f4d", "#d6835c", "#eea566", "#f7c27f", "#ffdca8", "#fff2da"];
-function skyPainter(canvas, opts) {
-  const ctx = canvas.getContext("2d");
-  let frame = null, cols = 0, rows = 0, cell = 0, last = 0, t0 = 0, raf = 0, dpr = 1;
-  const size = () => {
-    const r = canvas.getBoundingClientRect();
-    if (!r.width || !r.height) return;
-    dpr = Math.min(2, devicePixelRatio || 1);
-    canvas.width = Math.round(r.width * dpr); canvas.height = Math.round(r.height * dpr);
-    cell = (r.width < 640 ? 5 : opts.cell || 7) * dpr;
-    cols = Math.ceil(canvas.width / cell); rows = Math.ceil(canvas.height / cell);
-    frame = blackHole(cols, rows, typeof opts.at === "function" ? opts.at(r.width) : opts.at);
-  };
-  const paint = (t) => {
-    if (!frame) return;
-    const { v, ring, stars, twinkle } = frame(t), dim = opts.dim?.() ? 0.5 : 1;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    const paths = DISK.map(() => new Path2D()), ice = new Path2D(), dust = new Path2D(), star = new Path2D();
-    for (let k = 0, n = cols * rows; k < n; k++) {
-      const x = (k % cols + 0.5) * cell, y = (Math.floor(k / cols) + 0.5) * cell;
-      // The photon ring shows where the disk isn't in front of it.
-      if (ring[k] > 0.12 && v[k] < 0.4) { const r = cell * (0.16 + 0.3 * Math.min(1, ring[k] * 1.6)); ice.moveTo(x + r, y); ice.arc(x, y, r, 0, 6.283); continue; }
-      const l = v[k];
-      if (l > 0.035) {
-        const r = cell * (0.1 + 0.34 * Math.sqrt(l)), p = paths[Math.min(DISK.length - 1, Math.floor(l * DISK.length))];
-        p.moveTo(x + r, y); p.arc(x, y, r, 0, 6.283);
-      } else if (stars[k]) {
-        const r = cell * 0.14 * (0.7 + 0.3 * Math.sin(t * 0.8 + twinkle[k]));
-        star.moveTo(x + r, y); star.arc(x, y, Math.max(0.6, r), 0, 6.283);
-      } else dust.rect(x - 0.5 * dpr, y - 0.5 * dpr, dpr, dpr);
-    }
-    ctx.globalAlpha = 0.22 * dim; ctx.fillStyle = "#7f8db0"; ctx.fill(dust);
-    ctx.globalAlpha = 0.75 * dim; ctx.fillStyle = "#c7d5f0"; ctx.fill(star);
-    ctx.globalAlpha = dim;
-    paths.forEach((p, i) => { ctx.fillStyle = DISK[i]; ctx.fill(p); });
-    ctx.fillStyle = "#cfe2ff"; ctx.fill(ice);
-    ctx.globalAlpha = 1;
-  };
-  // 15 frames a second while it turns; one still frame when it shouldn't move.
-  const tick = (ms) => {
-    raf = requestAnimationFrame(tick);
-    if (ms - last < 66) return;
-    last = ms; paint((ms - t0) / 1000);
-  };
-  const play = () => {
-    cancelAnimationFrame(raf);
-    const moving = !STILL.matches && !document.hidden && (!opts.moving || opts.moving());
-    if (moving) raf = requestAnimationFrame(tick); else paint(12);
-  };
-  let resizeTimer = 0;
-  new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { size(); play(); }, 120); }).observe(canvas);
-  document.addEventListener("visibilitychange", play);
-  STILL.addEventListener?.("change", play);
-  size(); play();
-  return { play, stop: () => cancelAnimationFrame(raf) };
 }
 
 // ---------- The 24-hour bar ----------
@@ -719,7 +532,6 @@ function build() {
     q(".tile").textContent = TOOLS[tool].tile;
     q(".name").textContent = TOOLS[tool].name;
     q(".modes").setAttribute("aria-label", `${TOOLS[tool].name}: how to start windows`);
-    q(".model").placeholder = TOOLS[tool].placeholder;
     for (const [v, label] of DAYS) {
       const b = document.createElement("button");
       b.type = "button"; b.dataset.v = v; b.textContent = label;
@@ -810,18 +622,9 @@ function build() {
     });
     q(".presets").addEventListener("click", (e) => {
       const b = e.target.closest("button"); if (!b) return;
-      config[tool].days = b.dataset.p.split(",").map(Number); renderTool(tool); save();
+      config[tool].days = b.dataset.p.split(",").map(Number); q(".repeat").open = false; renderTool(tool); save();
     });
-    q(".prompt").addEventListener("input", (e) => { config[tool].prompt = e.target.value; save(); });
-    // A model name the server would refuse stays out of config, so it can't block saving anything else.
-    q(".model").addEventListener("input", (e) => {
-      const m = e.target.value.trim(), ok = /^[A-Za-z0-9._-]*$/.test(m);
-      e.target.classList.toggle("bad", !ok);
-      e.target.setCustomValidity(ok ? "" : "Letters, digits, '.', '_' and '-' only");
-      if (!ok) return e.target.reportValidity();
-      config[tool].model = m; save();
-    });
-
+    // The days menu closes when you pick a preset; clicks outside close it too (see below).
     document.getElementById("panels").append(node);
     els[tool] = node;
   }
@@ -876,15 +679,10 @@ function renderTool(tool) {
   // The plan: what the day looks like in this mode.
   q(".plan").classList.toggle("hidden", c.mode === "off");
   q(".when").classList.toggle("hidden", c.mode !== "schedule");
-  const next = c.mode === "schedule" ? nextScheduled(c) : null;
-  const tip = q(".tip"); tip.innerHTML = "";
   if (c.mode === "schedule") {
     q(".plan-q").textContent = c.times.length ? `Your day: ${c.times.length === 1 ? "one window" : c.times.length + " windows"}, ${daysText(c.days)}` : "When should your windows start?";
     drawDay(node, c.times.map((t) => ({ start: mins(t), len: WINDOW, title: clock(mins(t)), short: shortClock(mins(t)), sub: `to ${clock(mins(t) + WINDOW)}`, t })), { editable: true });
-    tip.append(c.times.length
-      ? "Click an empty hour to add a window. Drag one to move it, × to remove it."
-      : "Each message starts a 5-hour window. Click the timeline to add one.");
-    if (next) tip.append(" Next: ", Object.assign(document.createElement("b"), { textContent: when(next) }), ".");
+    q(".repeat-val").textContent = daysText(c.days).replace(/^on /, "");
     for (const b of q(".days").children) b.setAttribute("aria-pressed", String(c.days.includes(Number(b.dataset.v))));
   }
   if (c.mode === "watch") {
@@ -898,12 +696,7 @@ function renderTool(tool) {
     for (let m = first; m < origin + 1440; m += WINDOW) items.push({ start: m, len: WINDOW, title: clock(m), short: shortClock(m), sub: `to ${clock(m + WINDOW)}` });
     q(".plan-q").textContent = "Your next 24 hours: a new window as soon as each one ends";
     drawDay(node, items, { origin });
-    tip.append("UsageForge checks every 5 minutes, all week. Next: ",
-      Object.assign(document.createElement("b"), { textContent: open ? when(s.reset) : "within 5 minutes" }), ".");
   }
-
-  if (document.activeElement !== q(".prompt")) q(".prompt").value = c.prompt || "";
-  if (document.activeElement !== q(".model")) q(".model").value = c.model || "";
 }
 
 // The sky's caption: is it running, and what happens next.
@@ -918,38 +711,27 @@ function renderEngine() {
     line.append("Next window: ", Object.assign(document.createElement("b"), { textContent: TOOLS[next[0]].name }),
       next[1] - now < 300 ? " within 5 minutes" : " at ", ...(next[1] - now < 300 ? [] : [Object.assign(document.createElement("span"), { className: "nw", textContent: when(next[1]) })]));
   } else if (!on) line.append("Pick a mode for Claude Code or Codex below and it starts on its own.");
-  if (on && config.night.on) line.append(" · ", Object.assign(document.createElement("span"), { className: "nw", textContent: `Night hours ${clock(mins(config.night.from))} to ${clock(mins(config.night.to))}` }));
-  sky?.play();
-}
-
-// pmset's wake ("MTWRF 06:01:00") in words.
-function wakeWords(w) {
-  const [letters, t] = w.split(" "), names = { U: "Sun", M: "Mon", T: "Tue", W: "Wed", R: "Thu", F: "Fri", S: "Sat" };
-  const days = letters === "UMTWRFS" ? "every day" : letters === "MTWRF" ? "on weekdays" : letters === "US" ? "on weekends" : "on " + [...letters].map((l) => names[l]).join(", ");
-  return `${clock(mins(t.slice(0, 5)))} ${days}`;
+  if (on && config.night.sleep) line.append(" · ", Object.assign(document.createElement("span"), { className: "nw", textContent: `Sleeps ${clock(mins(config.night.from))} to ${clock(mins(config.night.to))}` }));
+  // The hole turns while it runs, and hangs still (dimmer) when it's off or you'd rather nothing moved.
+  const hole = document.getElementById("hole"), moving = on && !STILL.matches;
+  const src = moving ? "/assets/black-hole.gif" : "/assets/black-hole-still.webp";
+  if (!hole.src.endsWith(src)) hole.src = src;
+  hole.classList.toggle("still", !on);
 }
 
 function renderNight() {
-  const n = config.night, saved = state?.config?.night || {}, wake = state?.night || {};
-  document.getElementById("night").classList.toggle("off", !n.on);
-  document.getElementById("night-on").checked = !!n.on;
+  const n = config.night, w = state?.wake || {};
+  document.getElementById("sleep-on").checked = n.sleep;
+  document.getElementById("sleep-hours").classList.toggle("hidden", !n.sleep);
   for (const k of ["from", "to"]) { const i = document.getElementById(`night-${k}`); if (document.activeElement !== i) i.value = n[k]; }
-  const text = document.getElementById("wake-text"), btn = document.getElementById("wake-btn");
-  text.innerHTML = ""; btn.classList.remove("hidden");
-  const b = (s) => Object.assign(document.createElement("b"), { textContent: s });
-  if (saved.wake && wake.set) {
-    if (!n.on) text.append("Night hours are off, but the Mac still wakes at ", b(wakeWords(wake.set)), ".");
-    else if (wake.want && wake.want !== wake.set) text.append("Your set times changed. The Mac still wakes at ", b(wakeWords(wake.set)), ", but your first night time now needs ", b(wakeWords(wake.want)), ".");
-    else text.append("The Mac wakes at ", b(wakeWords(wake.set)), " for your first set time, then sleeps again once it's sent.");
-    btn.textContent = wake.want && wake.want !== wake.set && n.on ? "Move the wake" : "Stop waking";
-    btn.dataset.wake = btn.textContent === "Move the wake" ? "1" : "";
-  } else if (wake.want) {
-    text.append("Your first set time inside these hours needs the Mac awake at ", b(wakeWords(wake.want)), ". It can wake for it and sleep again afterwards; macOS asks for your password once.");
-    btn.textContent = "Wake my Mac for it"; btn.dataset.wake = "1";
-  } else {
-    text.append("None of your set times fall inside these hours, so the Mac doesn't need to wake.");
-    btn.classList.add("hidden");
-  }
+  document.getElementById("wake-on").checked = n.wake;
+  const note = document.getElementById("wake-note"), allow = document.getElementById("allow-btn");
+  note.innerHTML = "";
+  allow.classList.toggle("hidden", !n.wake || !!w.allowed);
+  if (!n.wake) note.append("Off: a sleeping Mac skips its set times");
+  else if (!w.allowed) note.append("macOS needs your OK once");
+  else if (w.next) note.append("Next wake ", Object.assign(document.createElement("b"), { textContent: when(w.next + 60) }));
+  else note.append("Nothing to wake for in the next 24 hours");
 }
 
 function renderLog() {
@@ -972,10 +754,6 @@ function renderLog() {
   document.getElementById("synced").textContent = `Updated ${clockTs(Date.now() / 1000)}`;
 }
 
-function renderNotes() {
-  for (const box of document.querySelectorAll("[data-note]")) box.checked = !!config.notify[box.dataset.note];
-}
-
 async function checkHealth() {
   try {
     const { problems } = await api("/api/doctor");
@@ -991,7 +769,6 @@ async function checkHealth() {
 }
 
 function render() {
-  renderNotes();
   for (const tool of Object.keys(TOOLS)) renderTool(tool);
   renderNight(); renderEngine(); renderLog();
 }
@@ -1008,10 +785,8 @@ const GUIDE = [
     text: "<b>At set times</b> starts one at the times you choose. <b>Back to back</b> starts the next the moment one ends. Try one now: it saves on its own." },
   { at: () => els.claude.querySelector(".day"), title: "Plan your day",
     text: "With <b>At set times</b> on, a bar shows your day. Each block is one 5-hour window. <b>Click an empty hour</b> to add one, drag a block to move it, × to remove it." },
-  { at: () => document.getElementById("night"), title: "Night hours",
-    text: "Going to bed while an agent is still working? Set night hours: the Mac stays up until <b>Claude Code and Codex have finished</b>, then sleeps. It can also wake for your first morning time." },
-  { at: () => document.querySelector(".notes"), title: "Notifications",
-    text: "One kind only: when something goes wrong, like a message that didn't go through or a usage limit reached. At most once every few hours per problem." },
+  { at: () => document.getElementById("night"), title: "Sleep and wake",
+    text: "<b>Sleep when work is done</b> lets the Mac sleep once Claude Code and Codex have finished. <b>Wake for set times</b> wakes a sleeping Mac so each window still starts." },
 ];
 let guide = null;
 const el = (tag, cls = "", html = "") => Object.assign(document.createElement(tag), { className: cls, innerHTML: html });
@@ -1029,7 +804,6 @@ function openGuide() {
 
 function closeGuide(done = true) {
   if (!guide) return;
-  guide.art?.stop();
   guide.dim.remove(); guide.spot.remove(); guide.card.remove(); guide = null;
   if (done) { try { localStorage.setItem("uf-guide", "done"); } catch {} document.getElementById("guide-btn").focus(); }
 }
@@ -1037,13 +811,10 @@ function closeGuide(done = true) {
 function showStep(i) {
   const g = guide, s = g.steps[i], last = i === g.steps.length - 1;
   g.i = i;
-  g.art?.stop(); g.art = null;
   g.card.classList.toggle("wide", !!s.art);
   g.card.innerHTML = "";
-  if (s.art) {
-    const c = el("canvas"); c.setAttribute("role", "img"); c.setAttribute("aria-label", "A black hole drawn in dots: a bright disk of gas turning around a dark shadow, its far side lensed into a halo");
-    g.card.append(c);
-  }
+  if (s.art) g.card.append(Object.assign(new Image(1600, 896), { className: "art", src: STILL.matches ? "/assets/black-hole-still.webp" : "/assets/black-hole.gif",
+    alt: "A black hole drawn in dots: a thin ring round a dark shadow, its glowing disk crossing in front and bent up over the top" }));
   const body = el("div", "body");
   const title = el("h3", "", s.title); title.id = "guide-title";
   body.append(title, el("p", "text", s.text));
@@ -1056,7 +827,6 @@ function showStep(i) {
   const next = btn("btn", s.art ? "Show me around" : last ? "Done" : "Next", () => (last ? closeGuide() : showStep(i + 1)));
   body.append(nav);
   g.card.append(body);
-  if (s.art) g.art = skyPainter(g.card.querySelector("canvas"), { cell: 6, at: { cx: 0.5, cy: 0.5, span: 0.21, out: 13, roll: -0.2 } });
   const t = target(s);
   if (t) t.scrollIntoView({ block: "center", behavior: STILL.matches ? "auto" : "smooth" });
   placeGuide();
@@ -1105,9 +875,8 @@ async function refresh(first) {
     state = fresh;
     if (first) {
       for (const tool of Object.keys(TOOLS)) config[tool] = { ...DEFAULT, ...(state.config?.[tool] || {}) };
-      config.notify = { problems: state.config?.notify?.problems ?? true };
       const n = state.config?.night || {};
-      config.night = { on: n.on === true, from: n.from || NIGHT.from, to: n.to || NIGHT.to };
+      config.night = { sleep: (n.sleep ?? n.on) === true, wake: n.wake !== false, from: n.from || NIGHT.from, to: n.to || NIGHT.to };
     }
     render();
     let seen = false;
@@ -1126,36 +895,26 @@ document.getElementById("logfilter").addEventListener("click", (e) => {
   renderLog();
 });
 
-document.querySelector(".notes").addEventListener("change", (e) => {
-  const box = e.target.closest("[data-note]"); if (!box) return;
-  config.notify[box.dataset.note] = box.checked; save();
-});
-document.getElementById("test-note").addEventListener("click", async () => {
-  try { await api("/api/notify-test", {}); toast("Sent. Check the top-right corner of your screen."); }
-  catch (err) { toast(err.message, true); }
-});
-
-document.getElementById("night-on").addEventListener("change", (e) => { config.night.on = e.target.checked; renderNight(); save(); });
+document.getElementById("sleep-on").addEventListener("change", (e) => { config.night.sleep = e.target.checked; renderNight(); save(); });
+document.getElementById("wake-on").addEventListener("change", (e) => { config.night.wake = e.target.checked; renderNight(); save(); });
 for (const k of ["from", "to"]) {
   document.getElementById(`night-${k}`).addEventListener("change", (e) => {
     if (!/^\d\d:\d\d$/.test(e.target.value)) return;
     config.night[k] = e.target.value; save();
   });
 }
-document.getElementById("wake-btn").addEventListener("click", async (e) => {
-  const b = e.currentTarget, label = b.textContent;
+document.getElementById("allow-btn").addEventListener("click", async (e) => {
+  const b = e.currentTarget;
   b.disabled = true; b.textContent = "Waiting for your password…";
-  try { state = await api("/api/night-wake", { wake: !!b.dataset.wake }); render(); toast(b.dataset.wake ? "The Mac will wake for it" : "No more daily wake"); }
-  catch (err) { toast(err.message, true); b.textContent = label; }
-  finally { b.disabled = false; renderNight(); }
+  try { state = await api("/api/wake-allow", {}); render(); toast("Allowed. The Mac wakes for your set times"); }
+  catch (err) { toast(err.message, true); }
+  finally { b.disabled = false; b.textContent = "Allow"; renderNight(); }
 });
+// An open days menu closes on a click anywhere else, or on Escape.
+document.addEventListener("click", (e) => { for (const d of document.querySelectorAll("details.repeat[open]")) if (!d.contains(e.target)) d.open = false; });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") for (const d of document.querySelectorAll("details.repeat[open]")) d.open = false; });
 
 build();
-// The sky: the disk turns while the background check runs, and hangs still (and dimmer) when it's off.
-const sky = skyPainter(document.getElementById("sky-canvas"), {
-  at: (w) => (w < 640 ? { cx: 0.5, cy: 0.5, span: 0.2, out: 12, roll: -0.2 } : { cx: w < 1080 ? 0.74 : 0.7, cy: 0.54, span: 0.21, out: 14, roll: -0.12 }),
-  moving: () => !!state?.running, dim: () => !state?.running,
-});
 render();
 refresh(true);
 checkHealth();

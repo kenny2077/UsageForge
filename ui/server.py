@@ -30,7 +30,7 @@ ASSETS = (HERE.parent / "docs" / "assets").resolve()
 TOKEN = secrets.token_urlsafe(24)
 sys.path.insert(0, str(HERE))
 import hole  # noqa: E402
-TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2"}
+TYPES = {".svg": "image/svg+xml", ".woff2": "font/woff2", ".gif": "image/gif", ".webp": "image/webp"}
 # The tools' own app icons, read from the apps you have installed (nothing is bundled).
 ICONS = {
     "claude": "/Applications/Claude.app/Contents/Resources/electron.icns",
@@ -70,14 +70,17 @@ def clean_tool(c):
 
 
 def clean_night(n):
-    """Night hours from the browser. The daily wake is only set by `usageforge night wake`, so it's kept as saved."""
+    """Sleep and wake from the browser: sleep off and wake on unless switched."""
     if any(not TIME.match(str(n.get(k, ""))) for k in ("from", "to")):
-        raise ValueError("night hours need a start and an end, like 23:30 and 08:00")
+        raise ValueError("sleep hours need a start and an end, like 23:30 and 08:00")
+    return {"sleep": n.get("sleep") is True, "wake": n.get("wake") is not False, "from": n["from"], "to": n["to"]}
+
+
+def saved_config():
     try:
-        saved = json.loads((STATE / "config.json").read_text()).get("night") or {}
+        return json.loads((STATE / "config.json").read_text())
     except (OSError, ValueError):
-        saved = {}
-    return {"on": n.get("on") is True, "from": n["from"], "to": n["to"], "wake": saved.get("wake") is True}
+        return {}
 
 
 def cli(*args, timeout):
@@ -111,10 +114,10 @@ def hello(url):
     size = shutil.get_terminal_size()
     if size.columns >= 68:
         # The disk turns for under a second, then holds still above the setup check.
-        for i in range(12):
+        for i in range(len(hole.frames())):
             if i:
-                sys.stdout.write("\x1b[14A")
-            sys.stdout.write(hole.ansi(64, 28, i * 0.3, true))
+                sys.stdout.write(f"\x1b[{hole.H // 2}A")
+            sys.stdout.write(hole.ansi(i, true))
             sys.stdout.flush()
             time.sleep(0.05)
     print()
@@ -201,8 +204,8 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
             if self.path == "/api/config":
                 config = {t: clean_tool(body[t]) for t in TOOLS if t in body}
-                notes = body.get("notify") or {}
-                config["notify"] = {k: notes[k] for k in ("problems",) if type(notes.get(k)) is bool}
+                # Notifications have no switch in the panel: keep whatever the CLI or an older panel saved.
+                config["notify"] = saved_config().get("notify") or {}
                 config["night"] = clean_night(body.get("night") or {})
                 STATE.mkdir(parents=True, exist_ok=True)
                 tmp = STATE / "config.json.tmp"
@@ -213,6 +216,7 @@ class Handler(BaseHTTPRequestHandler):
                 on = any(config[t]["mode"] != "off" for t in TOOLS if t in config)
                 installed = STATE / "usageforge"
                 stale = on and not (installed.is_file() and filecmp.cmp(CLI, installed, shallow=False))
+                cli("wake", "sync", timeout=60)   # move the Mac's scheduled wakes with the new times
                 now = status()
                 if on != now["running"] or stale:
                     r = cli("start" if on else "stop", timeout=60)
@@ -220,15 +224,12 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError(r.stderr.strip() or "couldn't change the background check")
                     now = status()
                 return self.reply(200, now)
-            if self.path == "/api/night-wake":
+            if self.path == "/api/wake-allow":
                 # macOS asks for the password in its own dialog; this waits for it.
-                r = cli("night", "wake" if body.get("wake") else "nowake", timeout=300)
+                r = cli("wake", "allow", timeout=300)
                 if r.returncode:
-                    raise ValueError(r.stderr.strip() or "couldn't change the daily wake")
+                    raise ValueError(r.stderr.strip() or "macOS didn't allow it")
                 return self.reply(200, status())
-            if self.path == "/api/notify-test":
-                cli("notify-test", timeout=30)
-                return self.reply(200, {"ok": True})
             self.reply(404, {"error": "not found"})
         except (ValueError, KeyError, TypeError, json.JSONDecodeError, subprocess.TimeoutExpired) as e:
             self.reply(400, {"error": str(e) or e.__class__.__name__})

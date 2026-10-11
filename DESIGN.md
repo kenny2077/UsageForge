@@ -121,7 +121,7 @@ Scope: this system covers the local control panel (`ui/index.html`, also shown i
 
 **Creative North Star: "The Watched Black Hole"**
 
-The background check is a black hole you can watch. Across the top, a dot-drawn, ray-traced accretion disk turns while UsageForge runs and hangs still when it is off, idle, hidden, or when the reader asks for reduced motion. Everything below sits on the same night ground and speaks the same grammar: dots. Usage meters are rows of lit dots, the day bar's track is a dot grid, mode choices carry little dot glyphs, status is one dot.
+The background check is a black hole you can watch. Across the top is the author's own black hole (`docs/assets/black-hole.gif`, the "gargantua" piece from their GitHub profile): a looping image the browser plays, so nothing is computed in the page. It turns while UsageForge runs; when it's off, or the reader asks for reduced motion, a still frame (`black-hole-still.webp`) hangs dimmed instead. Everything below sits on the same night ground and speaks the same grammar: dots. Usage meters are rows of lit dots, the day bar's track is a dot grid, mode choices carry little dot glyphs, status is one dot.
 
 Light comes from the disk. Its ember, gold and hot cream carry active state, selection and primary actions; the photon ring's ice blue carries focus, links and "now". Everything else is cool star dust on near-black navy. The panel is calm and dense enough to read at a glance, with no cards: parts sit directly on the ground, opened by hairlines.
 
@@ -167,7 +167,7 @@ A deep-space palette: navy void and star-dust neutrals, lit only by the warm dis
 
 **The One Alarm Rule.** Flare is the only error color and appears only when something is actually wrong.
 
-The canvas and the terminal draw the disk with one shared eight-step ramp (dark ember `#5b3036` through `#fff2da`), the ring at `#cfe2ff`, stars at `#c7d5f0` (terminal: `#606c8c`) and dust at `#7f8db0`. `ui/hole.py` and the panel's sky must keep these values in step.
+The sky and the terminal show the same piece: `ui/bake-hole.sh` bakes 12 frames of the GIF, cropped to the hole, into `ui/hole.bin` (64×36 pixels), which `ui/hole.py` draws in half blocks. Rebake after changing the GIF. The page ground `#04060c` is the GIF's own ground, so the image has no visible edge.
 
 ## Typography
 
@@ -179,8 +179,8 @@ The canvas and the terminal draw the disk with one shared eight-step ramp (dark 
 
 ### Hierarchy
 - **Display**: the engine line over the sky ("Running"), one per page; 28px on phones.
-- **Headline**: tool names and the Night hours heading; the guide card heading runs a step larger (24px).
-- **Title**: secondary section heads (Notify me, Activity).
+- **Headline**: tool names and the Sleep and wake heading; the guide card heading runs a step larger (24px).
+- **Title**: secondary section heads (Activity).
 - **Body**: default copy; questions above controls run at 15.5px/500. Long explanations cap at 64-72ch.
 - **Body small** (13-14px): descriptions, meter values, tips, field labels.
 - **Axis label**: the day bar's zone names (Night / Morning / Afternoon / Evening), uppercase and tracked, because they label a chart axis.
@@ -193,9 +193,9 @@ The canvas and the terminal draw the disk with one shared eight-step ramp (dark 
 
 ## Layout
 
-A full-width sky (320px desktop; on phones the canvas is 230px and the engine line drops below it) carries the brand top-left, Guide and Help top-right, and the engine line and next event over its lower left. A 44px gradient fades the sky into the void.
+A full-width sky (400px desktop; on phones the image runs full width and the engine line drops below it) carries the brand top-left, Guide top-right, and the engine line and next event over its lower left. The image fades out at its edges through a radial mask.
 
-Below, a centered column with a fluid gutter (16px to 44px, centering at 1320px max width). The two tool panels sit side by side with a 44px column gap, collapsing to one column under 1080px. Night hours, then Notify and Activity, run full width beneath.
+Below, a centered column with a fluid gutter (16px to 44px, centering at 1320px max width). The two tool panels sit side by side with a 44px column gap, collapsing to one column under 1080px. Sleep and wake, then Activity, run full width beneath.
 
 Rhythm: sections pad 20px x 22px (16px sides on phones); groups inside step by 12-14px; major blocks separate by 26px. Under 640px: modes stack vertically, the message/model pair stacks, day bands drop their "to" line and use short times, every other tick hides.
 
@@ -245,7 +245,7 @@ Warm and plain: light from the disk, no gloss.
 - **Error / Disabled:** flare outline; disabled at half opacity.
 
 ### Navigation
-Two quiet text links in the sky's top-right (Guide, Help with an outbound arrow), Ink 2 at rest, ink on hover. On phones only Guide remains.
+One quiet text link in the sky's top-right (Guide), Ink 2 at rest, ink on hover.
 
 ### Dot Meter (signature)
 A row of 20 dots per meter. Unlit dots are faint star dust; lit dots run gold, then paler gold past the eighth, then hot cream past the fourteenth. A meter running high turns ember, a full meter flare. A name and value sit on one baseline above the row.
@@ -267,7 +267,7 @@ A 38x22px pill track in star dust with a muted knob; when on the track tints gol
 - **Do** set times and numbers in mono with tabular numerals.
 - **Do** separate parts with 1px hairlines on the void instead of cards.
 - **Do** stop the sky when the page is hidden, the tool is off, or the reader asks for reduced motion, and paint one still frame instead.
-- **Do** keep the canvas sky and `ui/hole.py` on the same disk ramp, ring and void.
+- **Do** keep the sky image and `ui/hole.bin` baked from the same GIF, on the same void.
 
 ### Don't:
 - **Don't** use neon accents, glowing edges or a grid of cards.

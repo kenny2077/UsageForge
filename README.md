@@ -41,27 +41,25 @@ The terminal shows a small pixel black hole and the same setup check as `usagefo
 The panel has one section each for Claude Code and Codex. In each you can:
 - pick a mode: **Off**, **At set times** or **Back to back**
 - add ping times and choose the weekdays they run on, with a 24-hour preview of the windows they open
-- set the message and model
 
-Below them, **Night hours** (macOS) and **Notify me**. Each section also shows the 5-hour and weekly meters. Changes save automatically, and the background check turns itself on or off to match.
+Below them, **Sleep and wake** (macOS). Each section also shows the 5-hour and weekly meters. Changes save automatically, and the background check turns itself on or off to match.
 The panel only listens on 127.0.0.1, and every request must carry a random token that's created each time the panel starts.
 
-## Night hours (macOS)
+## Sleep and wake (macOS)
 
-Going to bed while Claude Code or Codex is still working? Between the hours you set, UsageForge keeps the Mac awake while an agent is working (its session log changed in the last 10 minutes), then puts it to sleep once they've finished and nobody has touched the Mac for 10 minutes. It stays up if a set time is less than 15 minutes away. Outside night hours it never sleeps the Mac.
+- **Wake for set times** (on by default): a sleeping Mac wakes a minute after each set time (and when a Back to back window ends), so the window still starts. macOS has to allow it once: click **Allow** in the panel or run `usageforge wake allow`, which asks for your password and adds a rule to `/etc/sudoers.d/usageforge` that lets UsageForge run only `pmset schedule wake` and `pmset schedule cancel wake`. UsageForge keeps the Mac's wake schedule in step with your times. Turn it off and a sleeping Mac skips them.
+- **Sleep when work is done** (off by default): between the hours you set, the Mac stays awake while Claude Code or Codex is working (its session log changed in the last 10 minutes), then sleeps once they've finished and nobody has touched it for 10 minutes. It stays up when a set time is less than 15 minutes away.
 
 ```bash
-usageforge night 23:30 08:00   # night hours on
-usageforge night wake          # also wake the Mac a minute after your first set time inside them (asks for your password)
-usageforge night nowake        # stop the daily wake
-usageforge night off
+usageforge wake allow | on | off
+usageforge sleep 23:30 08:00 | off
 ```
 
-The wake uses `pmset repeat wakeorpoweron`, which needs your password once and holds one daily wake. If you change your set times, run `usageforge night wake` again; `doctor` and the panel tell you when it's out of date. `nowake` runs `pmset repeat cancel`, which also clears any repeating wake you set yourself. Closing the lid still sleeps the Mac, as always.
+To remove the wake permission: `sudo rm /etc/sudoers.d/usageforge`. Closing the lid still sleeps the Mac, as always.
 
 ## Notifications
 
-UsageForge sends a notification only when something goes wrong (offline, signed out, or a usage limit reached), at most once every 6 hours for each kind of problem. Turn it off under **Notify me** in the control panel.
+UsageForge sends a notification only when something goes wrong (offline, signed out, or a usage limit reached), at most once every 6 hours for each kind of problem. `usageforge notify-test` sends a test one.
 
 ## Modes from the terminal
 
@@ -111,7 +109,7 @@ There's one background check, run every 5 minutes. It re-reads the settings each
 ## Caveats
 
 - **A sleeping laptop can't send anything.** launchd runs a missed job as soon as the Mac wakes.
-  To wake the Mac for your first morning time, use night hours (`usageforge night wake`, above).
+  **Wake for set times** (above) wakes it for each one.
   Linux cron skips jobs missed during sleep. Watch mode catches up on its next 5-minute check.
   cron uses the system time zone, which is often UTC on servers.
 - **`claude -p` billing may change.** If Anthropic starts billing it separately (announced, then paused, in 2026), a `claude -p` ping might stop opening the interactive window. See `docs/research.md`.

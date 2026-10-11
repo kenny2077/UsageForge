@@ -34,6 +34,7 @@ mkdir -p "$S"
 echo '{"payload":{"rate_limits":{"primary":{"resets_at":$FUTURE},"secondary":{"used_percent":10,"resets_at":$WEEK}}}}' >"$S/rollout-new.jsonl"
 EOF
 printf '#!/bin/sh\necho "$@" >>"%s/notes"\n' "$T" >"$T/bin/osascript"   # never pop real notifications
+printf '#!/bin/sh\nexit 1\n' >"$T/bin/sudo"   # never schedule real wakes
 chmod +x "$T/bin/"*
 
 lk() { HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" UF_TOOLS="claude codex" UF_RETRY_DELAY=0 UF_JITTER=0 ./usageforge "$@" >/dev/null; }
@@ -156,7 +157,8 @@ EOF
   ! HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge doctor >/dev/null || { echo "FAIL: doctor should flag no times"; exit 1; }
 fi
 
-# Night hours: sleep once agents are done and nobody is at the Mac; stay up while one works.
+# Sleep: in its hours, sleep once agents are done and nobody is at the Mac; stay up while one works.
+# Wake: one wake a minute after each set time, kept in step with the schedule.
 if [ "$(uname)" = Darwin ]; then
   printf '#!/bin/sh\necho "pmset $*" >>"%s/power"\n' "$T" >"$T/bin/pmset"
   printf '#!/bin/sh\necho "caffeinate $*" >>"%s/power"\n' "$T" >"$T/bin/caffeinate"
@@ -164,26 +166,35 @@ if [ "$(uname)" = Darwin ]; then
   chmod +x "$T/bin/pmset" "$T/bin/caffeinate" "$T/bin/ioreg"
   power() { cat "$T/power" 2>/dev/null | grep -c "$1"; }
   find "$T/home" -name '*.jsonl' -exec touch -t 202001010000 {} +
-  night='"night":{"on":true,"from":"'$(date -v-1H +%H:%M)'","to":"'$(date -v+1H +%H:%M)'"}'
+  night='"night":{"sleep":true,"wake":false,"from":"'$(date -v-1H +%H:%M)'","to":"'$(date -v+1H +%H:%M)'"}'
   cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},'"$night"'}'
   echo 100 >"$T/idle"; lk tick
-  [ "$(power sleepnow)" = 0 ] || { echo "FAIL: night should not sleep while someone uses the Mac"; exit 1; }
+  [ "$(power sleepnow)" = 0 ] || { echo "FAIL: sleep while someone uses the Mac"; exit 1; }
   echo 700 >"$T/idle"; lk tick
-  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: night should sleep once agents are done"; exit 1; }
+  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: should sleep once agents are done"; exit 1; }
   mkdir -p "$T/home/.claude/projects/p"; touch "$T/home/.claude/projects/p/s.jsonl"; lk tick; sleep 1   # caffeinate starts in the background
-  [ "$(power sleepnow)" = 1 ] && [ "$(power caffeinate)" = 1 ] || { echo "FAIL: night should keep the Mac up while an agent works"; exit 1; }
+  [ "$(power sleepnow)" = 1 ] && [ "$(power caffeinate)" = 1 ] || { echo "FAIL: should keep the Mac up while an agent works"; exit 1; }
   rm -rf "$T/home/.claude/projects"
-  cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},"night":{"on":false}}'; lk tick
-  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: night hours off should never sleep"; exit 1; }
-  # The daily wake: a minute after the first set time inside night hours, on its days.
-  cfg '{"claude":{"mode":"schedule","times":["14:00","06:00"],"days":[1,2,3,4,5]},"codex":{"mode":"off"},"night":{"on":true,"from":"23:00","to":"08:00"}}'
-  lk night wake
-  grep -q "pmset repeat wakeorpoweron MTWRF 06:01:00" "$T/notes" || { echo "FAIL: daily wake not set"; exit 1; }
-  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.night.want == .night.set and .config.night.wake' >/dev/null ||
-    { echo "FAIL: status should show the wake that was set"; exit 1; }
-  ! lk night 25:00 08:00 2>/dev/null || { echo "FAIL: bad night time accepted"; exit 1; }
+  cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"},"night":{"sleep":false,"wake":false}}'; lk tick
+  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: sleep off should never sleep the Mac"; exit 1; }
+  ! lk sleep 25:00 08:00 2>/dev/null || { echo "FAIL: bad sleep time accepted"; exit 1; }
+
+  # Wake. sudo is faked: it logs and says yes.
+  printf '#!/bin/sh\n[ "$2" = -l ] && exit 0\necho "$*" >>"%s/sudo"\n' "$T" >"$T/bin/sudo"; chmod +x "$T/bin/sudo"
+  wakes() { cat "$T/sudo" 2>/dev/null | grep -c "$1"; }
+  t1=$(date -v+2H +%H:%M); w1=$(date -r $(( $(date -j -f '%Y-%m-%d %H:%M:%S' "$(date +%F) $t1:00" +%s) + 60 )) '+%m/%d/%y %H:%M:%S')
+  cfg '{"claude":{"mode":"schedule","times":["'$t1'"]},"codex":{"mode":"off"}}'   # wake is on by default
+  lk tick; lk tick
+  [ "$(wakes "schedule wake $w1")" = 1 ] || { echo "FAIL: one wake a minute after the set time ($(cat "$T/sudo" 2>/dev/null))"; exit 1; }
+  lk wake off
+  [ "$(wakes "schedule cancel wake $w1")" = 1 ] || { echo "FAIL: wake off should cancel the scheduled wake"; exit 1; }
+  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.wake.allowed and .config.night.wake == false' >/dev/null ||
+    { echo "FAIL: status should show wake"; exit 1; }
+  lk wake allow
+  grep -q "visudo -cf" "$T/notes" && grep -q "/etc/sudoers.d/usageforge" "$T/notes" || { echo "FAIL: wake allow should install a checked sudoers rule"; exit 1; }
   rm -f "$T/bin/pmset" "$T/bin/caffeinate" "$T/bin/ioreg"
 fi
+printf '#!/bin/sh\nexit 1\n' >"$T/bin/sudo"
 
 # Live Claude usage from `claude -p /usage` (sends no message): numbers and the real reset time.
 # Real reports say is_active:false even while the 5h window is open, so it must not be trusted.
@@ -242,9 +253,9 @@ cp -R ui "$T/ui"; python3 -B "$T/ui/server.py" ./usageforge --no-open --port 459
 rm "$T/ui/index.html"
 [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4597/)" = 503 ] || { kill $P; echo "FAIL: panel with its files gone"; exit 1; }
 sleep 1; ! kill -0 $P 2>/dev/null || { kill $P; echo "FAIL: panel should exit once its files are gone"; exit 1; }
-# The pixel black hole: 14 terminal rows for 28 pixels, a dark shadow in the middle, a lit disk around it.
+# The pixel black hole: 12 baked frames, 18 terminal rows each, a dark shadow and a lit disk.
 python3 -B -c "import sys; sys.path.insert(0, 'ui'); import hole
-assert hole.ansi(64, 28).count(chr(10)) == 14
-px = hole.pixels(64, 28)
-assert px[12][32] == hole.VOID and any(c in hole.DISK[4:] for row in px for c in row)" || { echo "FAIL: black hole"; exit 1; }
+assert len(hole.frames()) == 12 and hole.ansi().count(chr(10)) == 18
+px = hole.pixels()
+assert sum(px[13][32]) < 60 and max(sum(c) for row in px for c in row) > 500" || { echo "FAIL: black hole"; exit 1; }
 echo PASS
