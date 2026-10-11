@@ -199,6 +199,11 @@ fi
 python3 ui/server.py ./usageforge --no-open --port 4598 >/dev/null 2>&1 & P=$!; sleep 1
 python3 ui/server.py ./usageforge --no-open --port 4598 2>&1 | grep -q "already running" || { kill $P; echo "FAIL: second ui"; exit 1; }
 kill $P; wait $P 2>/dev/null || true
+# Upgraded under a running panel (Homebrew deletes the old files): say so and free the port.
+cp -R ui "$T/ui"; python3 -B "$T/ui/server.py" ./usageforge --no-open --port 4598 >/dev/null 2>&1 & P=$!; sleep 1
+rm "$T/ui/index.html"
+[ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:4598/)" = 503 ] || { kill $P; echo "FAIL: panel with its files gone"; exit 1; }
+sleep 1; ! kill -0 $P 2>/dev/null || { kill $P; echo "FAIL: panel should exit once its files are gone"; exit 1; }
 # The pixel dawn: a valid PNG, and 14 terminal rows for 28 pixels.
 python3 -B -c "import sys; sys.path.insert(0, 'ui'); import dawn
 assert dawn.png(8, 4)[:8] == b'\\x89PNG\\r\\n\\x1a\\n'

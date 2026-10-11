@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import textwrap
+import threading
 import time
 import webbrowser
 from functools import lru_cache
@@ -35,6 +36,13 @@ ICONS = {
     "claude": "/Applications/Claude.app/Contents/Resources/electron.icns",
     "codex": "/Applications/ChatGPT.app/Contents/Resources/icon-codex-dark-color.png",
 }
+
+# Homebrew deletes the old version's files on upgrade, under a panel that's still running.
+# Said once, then the port is freed; the page reloads when a new panel answers.
+GONE = b"""<!doctype html><meta charset="utf-8"><title>UsageForge</title>
+<body style="margin:0;display:grid;place-items:center;height:100vh;background:#050c1a;color:#c8d6e4;font:16px/1.5 -apple-system,sans-serif">
+<p>UsageForge was updated. Run <code>usageforge ui</code> again to open the new panel.</p>
+<script>setInterval(() => fetch("/").then((r) => r.ok && location.reload(), () => {}), 2000)</script>"""
 
 TIME = re.compile(r"^([01]?\d|2[0-3]):[0-5]\d$")
 MODEL = re.compile(r"^[A-Za-z0-9._-]{0,64}$")
@@ -157,6 +165,9 @@ class Handler(BaseHTTPRequestHandler):
         if not self.local():
             return self.reply(403)
         if path == "/":
+            if not (HERE / "index.html").is_file():
+                threading.Thread(target=self.server.shutdown).start()
+                return self.reply(503, GONE, "text/html; charset=utf-8")
             html = (HERE / "index.html").read_text().replace("__UF_TOKEN__", TOKEN)
             return self.reply(200, html.encode(), "text/html; charset=utf-8")
         if path.startswith("/assets/"):
@@ -229,5 +240,6 @@ if __name__ == "__main__":
         webbrowser.open(url)
     try:
         server.serve_forever()
+        print("UsageForge was updated: run 'usageforge ui' again.")
     except KeyboardInterrupt:
         pass
