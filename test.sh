@@ -114,9 +114,14 @@ if [ "$past" != 23:59 ]; then
   n=$(date +%s); rm -f "$T/state/claude.last"; echo 1 >"$T/state/claude.reset"
   cfg '{"claude":{"mode":"schedule","times":["'$future'"]},"codex":{"mode":"off"}}'
   echo "$(( n - 14400 )) $(( n + 1000 ))" >"$T/state/claude.waits"
-  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson w $(( n + 1000 )) '.wake.next == $w' >/dev/null ||
+  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson w $(( n + 1000 )) '.wake.next == $w and .tools.claude.next == $w' >/dev/null ||
     { echo "FAIL: the Mac should wake when a held time's window ends"; exit 1; }
   lk tick;  check "4 5" "held time should wait for its window to end"
+  # Next, as the panel and menu bar show it: a set time inside an open window waits for the window.
+  echo $(( n + 99999 )) >"$T/state/claude.reset"
+  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson r $(( n + 99999 )) '.tools.claude.next == $r' >/dev/null ||
+    { echo "FAIL: next should wait for the open window"; exit 1; }
+  echo 1 >"$T/state/claude.reset"
   echo "$(( n - 14400 )) $(( n - 60 ))" >"$T/state/claude.waits"
   lk tick;  check "5 5" "held time should go out once its window ends"
   lk tick;  check "5 5" "held time should go out once"

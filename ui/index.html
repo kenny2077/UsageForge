@@ -89,6 +89,8 @@ main { padding: 8px var(--gutter) 72px; }
 .dots.full i.on { background: var(--flare); }
 .liveline { color: var(--faint); font-size: 13px; }
 .liveline .on { color: var(--ring); }
+/* The panel lost its server: the numbers are a snapshot, so they step back until it reconnects. */
+body.stale .meter, body.stale .liveline { opacity: 0.4; }
 
 /* Mode: three choices in one row */
 .modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line-2); border-radius: var(--r); overflow: hidden; }
@@ -435,20 +437,6 @@ function dotRow(el, pct) {
   el.classList.toggle("full", pct >= 100);
 }
 
-function nextScheduled(c) {
-  if (!c.times.length || !c.days.length) return null;
-  const now = new Date();
-  for (let add = 0; add < 8; add++) {
-    const d = new Date(now); d.setDate(now.getDate() + add);
-    if (!c.days.includes(d.getDay())) continue;
-    for (const t of [...c.times].sort((a, b) => mins(a) - mins(b))) {
-      const at = new Date(d); at.setHours(...t.split(":").map(Number), 0, 0);
-      if (at > now) return at.getTime() / 1000;
-    }
-  }
-  return null;
-}
-
 function daysText(days) {
   const s = [...days].sort().join(",");
   if (s === "0,1,2,3,4,5,6") return "every day";
@@ -630,12 +618,11 @@ function build() {
   }
 }
 
-// When this tool sends next, if it will: epoch seconds or null.
+// When this tool sends next, if it will: epoch seconds or null. The CLI works it out (a set time
+// inside an open window waits for it to end), so the panel and the menu bar always agree.
 function nextFor(tool) {
-  const c = config[tool], s = state?.tools?.[tool] || {}, now = state?.now || Date.now() / 1000;
-  if (!s.installed || c.mode === "off") return null;
-  if (c.mode === "schedule") return nextScheduled(c);
-  return s.reset > now ? s.reset : now;
+  const s = state?.tools?.[tool] || {};
+  return s.installed && config[tool].mode !== "off" && s.next ? s.next : null;
 }
 
 function renderTool(tool) {
@@ -648,8 +635,8 @@ function renderTool(tool) {
   q(".sub").classList.toggle("warn", !s.installed);
 
   let text = "Off";
-  if (c.mode === "schedule") { const n = nextScheduled(c); text = n ? `Next ${when(n)}` : "No times set"; }
-  if (c.mode === "watch") text = open ? `Next ${when(s.reset)}` : "Starting soon";
+  const n = nextFor(tool);
+  if (c.mode !== "off") text = !n ? "No times set" : n - now < 300 ? "Starting soon" : `Next ${when(n)}`;
   if (s.backoff > now && !open) text = `Retrying ${when(s.backoff)}`;
   q(".state-text").textContent = text;
   q(".state").classList.toggle("on", c.mode !== "off");
@@ -671,8 +658,8 @@ function renderTool(tool) {
   const live = q(".live-text"); live.innerHTML = "";
   const ago = s.updated ? Math.max(0, Math.round((now - s.updated) / 60)) : null;
   const dot = document.createElement("span"); dot.className = "on"; dot.textContent = "Live";
-  live.append(dot, tool === "codex" ? " · from Codex's own logs"
-    : ago == null ? " · from Claude Code's /usage" : ` · from Claude Code's /usage, ${ago < 1 ? "just now" : ago + " min ago"}`);
+  const from = tool === "codex" ? (s.updated ? " · from Codex" : " · from Codex's own logs") : " · from Claude Code's /usage";
+  live.append(dot, from + (ago == null ? "" : `, ${ago < 1 ? "just now" : ago + " min ago"}`));
 
   for (const b of q(".modes").children) b.setAttribute("aria-checked", String(b.dataset.v === c.mode));
 
@@ -869,10 +856,11 @@ function save() {
   }, 600);
 }
 
+let lastOk = 0, reconnect = 0;
 async function refresh(first) {
   try {
     const fresh = await api("/api/status");
-    state = fresh;
+    state = fresh; lastOk = Date.now() / 1000; document.body.classList.remove("stale");
     if (first) {
       for (const tool of Object.keys(TOOLS)) config[tool] = { ...DEFAULT, ...(state.config?.[tool] || {}) };
       const n = state.config?.night || {};
@@ -883,8 +871,13 @@ async function refresh(first) {
     try { seen = localStorage.getItem("uf-guide") === "done"; } catch {}
     if (first && !seen) openGuide();
   } catch {
-    const e = document.getElementById("engine"); e.classList.remove("on"); e.querySelector(".engine-text").textContent = "Panel closed";
-    document.getElementById("engine-next").textContent = "Run usageforge ui to open it again.";
+    // The server went away (an upgrade, or it was stopped) or restarted with a new token. Say how old
+    // the numbers are, and reload as soon as a panel answers again.
+    const e = document.getElementById("engine"); e.classList.remove("on"); e.querySelector(".engine-text").textContent = "Reconnecting…";
+    document.getElementById("engine-next").textContent = lastOk ? `Numbers from ${when(lastOk)}. If this stays, run usageforge ui.` : "Run usageforge ui to open the panel.";
+    document.body.classList.add("stale");
+    for (const l of document.querySelectorAll(".live-text")) l.textContent = lastOk ? `Not updated since ${when(lastOk)}` : "Not updated";
+    reconnect ||= setInterval(() => fetch("/", { cache: "no-store" }).then((r) => r.ok && location.reload(), () => {}), 3000);
   }
 }
 
