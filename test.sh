@@ -227,6 +227,22 @@ if [ "$(uname)" = Darwin ]; then
     { echo "FAIL: status should show wake"; exit 1; }
   lk wake allow
   grep -q "visudo -cf" "$T/notes" && grep -q "/etc/sudoers.d/usageforge" "$T/notes" || { echo "FAIL: wake allow should install a checked sudoers rule"; exit 1; }
+
+  # After a wake we scheduled, back to sleep once nobody has used the Mac since; never after another wake.
+  W=$(( $(date +%s) - 240 ))
+  printf '#!/bin/sh\necho "{ sec = $(cat "%s/woke"), usec = 0 }"\n' "$T" >"$T/bin/sysctl"; chmod +x "$T/bin/sysctl"
+  cfg '{"claude":{"mode":"off"},"codex":{"mode":"off"}}'; : >"$T/power"
+  echo $(( W + 100 )) >"$T/woke"; echo "$W" >"$T/state/wakes"; echo 600 >"$T/idle"; lk tick
+  [ "$(power sleepnow)" = 0 ] || { echo "FAIL: back to sleep after a wake that wasn't ours"; exit 1; }
+  echo "$W" >"$T/woke"; echo 30 >"$T/idle"; lk tick
+  [ "$(power sleepnow)" = 0 ] || { echo "FAIL: back to sleep although someone used the Mac after the wake"; exit 1; }
+  echo 230 >"$T/idle"; lk tick
+  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: should go back to sleep after a wake we scheduled"; exit 1; }
+  printf '#!/bin/sh\nexit 1\n' >"$T/bin/claude"; chmod +x "$T/bin/claude"; rm -f "$T/state/claude.limits"
+  cfg '{"claude":{"mode":"schedule","times":["'$(date -v+3H +%H:%M)'"]},"codex":{"mode":"off"}}'; lk tick
+  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: should stay up until the usage is read"; exit 1; }
+  grep -qx "$W" "$T/state/wakes" || { echo "FAIL: past wakes should be kept for a day"; exit 1; }
+  rm -f "$T/bin/sysctl"
   rm -f "$T/bin/pmset" "$T/bin/ioreg"
 fi
 printf '#!/bin/sh\nexit 1\n' >"$T/bin/sudo"

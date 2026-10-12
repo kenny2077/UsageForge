@@ -47,7 +47,7 @@ The panel only listens on 127.0.0.1, and every request must carry a random token
 
 ## Sleep and wake (macOS)
 
-- **Wake for set times** (on by default): a sleeping Mac wakes a minute after each set time (and when a Back to back window ends), so the window still starts. macOS has to allow it once: click **Allow** in the panel or run `usageforge wake allow`, which asks for your password and adds a rule to `/etc/sudoers.d/usageforge` that lets UsageForge run only `pmset schedule wake` and `pmset schedule cancel wake`. UsageForge keeps the Mac's wake schedule in step with your times. Turn it off and a sleeping Mac skips them.
+- **Wake for set times** (on by default): a sleeping Mac wakes a minute after each set time (and when a Back to back window ends), so the window still starts. Once the message is out and the usage re-read, it goes back to sleep, even with the lid open, unless someone has used the Mac since or an agent is working. macOS has to allow it once: click **Allow** in the panel or run `usageforge wake allow`, which asks for your password and adds a rule to `/etc/sudoers.d/usageforge` that lets UsageForge run only `pmset schedule wake` and `pmset schedule cancel wake`. UsageForge keeps the Mac's wake schedule in step with your times. Turn it off and a sleeping Mac skips them.
 - **Sleep when work is done** (off by default): switch it on as you leave. The Mac stays awake while Claude Code or Codex is working (its session log changed in the last 10 minutes), then sleeps once they've finished and nobody has touched it for 10 minutes, and the switch turns itself off. It stays up when a set time is less than 15 minutes away.
 
 ```bash

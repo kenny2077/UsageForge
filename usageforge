@@ -15,7 +15,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.8.0
+VERSION=3.8.1
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -323,6 +323,7 @@ tick() {
     due "$t" && { jitter; UF_WHY=$(cfg "$t" mode) ping "$t"; }
   done
   sleep_check
+  back_to_sleep
   wake_sync
   return 0
 }
@@ -330,7 +331,8 @@ tick() {
 # ---------- Sleep and wake (macOS) ----------
 # Sleep (off by default): switch it on as you leave; the Mac stays awake while Claude Code or Codex
 # is working, sleeps once they've finished and nobody is using it, and the switch turns itself off.
-# Wake (on by default): a sleeping Mac wakes a minute after each set time, so the window still starts.
+# Wake (on by default): a sleeping Mac wakes a minute after each set time, so the window still starts,
+# then goes back to sleep unless someone has used it since.
 # Scheduling a wake needs root; `wake allow` adds a sudoers rule for exactly that, once.
 
 sleep_on() { [ "$(jq -r '.night // {} | if has("sleep") then .sleep else (.on // false) end' "$CONFIG" 2>/dev/null)" = true ]; }
@@ -393,6 +395,33 @@ sleep_check() {
   pmset sleepnow >/dev/null 2>&1
 }
 
+# After a wake we scheduled: once the messages are out and the meters re-read, sleep again unless someone
+# has used the Mac since. With the lid open on power and the display set to never sleep, macOS kept
+# it up from 06:01 until someone came by at 08:33 (2026-10-12).
+back_to_sleep() {
+  [ "$(uname)" = Darwin ] && wake_on || return 0
+  local w t ts
+  w=$(int "$(sysctl -n kern.waketime 2>/dev/null | sed -E 's/[^0-9]*([0-9]+).*/\1/')")
+  awk -v w="$w" '$1 - w < 90 && w - $1 < 90 {f = 1} END {exit !f}' "$STATE/wakes" 2>/dev/null || return 0
+  [ $(( $(idle_secs) + 120 )) -ge $(( $(now) - w )) ] || return 0   # someone has used it since
+  agents_busy && return 0
+  for ts in $(due_times); do [ "$ts" -le $(( $(now) + 900 )) ] && return 0; done
+  for t in claude codex; do
+    command -v "$t" >/dev/null && [ -n "$(cfg "$t" mode | grep -v '^off$')" ] || continue
+    # Stay up (for an hour at most) while a failed message waits for its retry, and until the meters
+    # are re-read, so the panel and menu bar show the new window.
+    [ $(( $(now) - w )) -lt 3600 ] || continue
+    [ "$(now)" -lt "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" ] && return 0
+    case $t in
+      claude) claude_usage; [ -n "$(find "$STATE/claude.limits" -mmin -"$LIVE_AGE" 2>/dev/null)" ] || return 0 ;;
+      codex) codex_live >/dev/null || return 0 ;;
+    esac
+  done
+  log "wake: messages sent and usage read; nobody is using the Mac, so back to sleep"
+  [ -n "${HOLD:-}" ] && kill "$HOLD" 2>/dev/null
+  pmset sleepnow >/dev/null 2>&1
+}
+
 wake_allowed() { sudo -n -l /usr/bin/pmset schedule wake "01/01/30 00:00:00" >/dev/null 2>&1; }
 pm_date() { date -r "$1" '+%m/%d/%y %H:%M:%S'; }
 # Keep exactly one wake, a minute after each due moment, in pmset's schedule; drop ours that went stale.
@@ -407,7 +436,9 @@ wake_sync() {
   for ts in $want; do
     grep -qx "$ts" <<<"$have" || sudo -n /usr/bin/pmset schedule wake "$(pm_date "$ts")" >/dev/null 2>&1 || log "wake: couldn't schedule $(fmt "$ts")"
   done
-  printf '%s\n' $want >"$STATE/wakes"
+  # Keep the last day's past wakes too: back_to_sleep matches the Mac's wake time against them.
+  { awk -v n="$(now)" '$1 <= n && $1 > n - 86400' "$STATE/wakes" 2>/dev/null; printf '%s\n' $want; } >"$STATE/wakes.tmp" &&
+    mv -f "$STATE/wakes.tmp" "$STATE/wakes"
 }
 
 # The password dialog is macOS's own; nothing here sees it.
