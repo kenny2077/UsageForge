@@ -15,7 +15,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.8.2
+VERSION=3.8.3
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -209,10 +209,13 @@ ping_claude() {
 }
 
 ping_codex() {
-  local model lean=()
+  local model help lean=()
   model=$(model_for codex) || return 1
   # --ignore-user-config skips ~/.codex/config.toml (MCP servers etc.) on CLIs that support it.
-  codex exec --help 2>/dev/null | grep -q -- --ignore-user-config && lean=(--ignore-user-config)
+  # --ephemeral: no session file, which would look like an agent at work and keep the Mac up 10 min.
+  help=$(codex exec --help 2>/dev/null)
+  grep -q -- --ignore-user-config <<<"$help" && lean=(--ignore-user-config)
+  grep -q -- --ephemeral <<<"$help" && lean+=(--ephemeral)
   [ -n "$model" ] && lean+=(-m "$model")
   # Codex echoes the whole prompt (incl. your AGENTS.md) on stderr: keep it out of the log unless it failed.
   (cd "$STATE" && limit codex exec --skip-git-repo-check --sandbox read-only ${lean[@]+"${lean[@]}"} \
@@ -285,18 +288,22 @@ due() {
           [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && [ "$(added "$t" "$time")" -lt "$ts" ] && slot=$ts
         done
       done
-      # A set time held back by an open window goes out once that window ends, even past its 3 h.
+      # A set time held back by an open window goes out once that window ends, even past its 3 h, but only
+      # inside its own 5 hours: a 21:00 held until 03:12 then pushed 06:00 to 08:18, and the rest of the
+      # day along with it (2026-10-14).
       if [ -z "$slot" ]; then
         { read -r ws we <"$STATE/$t.waits"; } 2>/dev/null; ws=$(int "${ws:-}") we=$(int "${we:-}")
-        [ "$last" -lt "$ws" ] && [ "$(now)" -ge "$we" ] && [ "$(now)" -lt $(( we + 10800 )) ] && slot=$ws
+        [ "$last" -lt "$ws" ] && [ "$we" -lt $(( ws + 18000 )) ] && [ "$(now)" -ge "$we" ] && [ "$(now)" -lt $(( we + 10800 )) ] && slot=$ws
       fi
       [ -n "$slot" ] || return 1
       # A message inside an open window doesn't start a new one: wait for it to end.
       [ "$t" = claude ] && claude_usage
       r=$(reset_at "$t")
       [ "$(now)" -ge "$r" ] && return 0
-      [ "$(cut -d' ' -f1 "$STATE/$t.waits" 2>/dev/null)" = "$slot" ] ||
-        log "$t: $(fmt "$slot") goes out when the open window ends ($(fmt "$r"))" >/dev/null
+      if [ "$(cut -d' ' -f1 "$STATE/$t.waits" 2>/dev/null)" != "$slot" ]; then
+        if [ "$r" -lt $(( slot + 18000 )) ]; then log "$t: $(fmt "$slot") goes out when the open window ends ($(fmt "$r"))" >/dev/null
+        else log "$t: $(fmt "$slot") skipped: nothing can start until $(fmt "$r"), after its 5 hours" >/dev/null; fi
+      fi
       echo "$slot $r" >"$STATE/$t.waits"
       return 1 ;;
     *) return 1 ;;
@@ -360,8 +367,9 @@ due_times() {
         done
         # A set time waiting for an open window to end.
         ws="" we=""; { read -r ws we <"$STATE/$t.waits"; } 2>/dev/null
-        [ "$(int "$(cat "$STATE/$t.last" 2>/dev/null)")" -lt "$(int "${ws:-}")" ] && [ "$(int "${we:-}")" -gt "$(now)" ] &&
-          [ "$(int "${we:-}")" -le $(( $(now) + 86400 )) ] && echo "$we" ;;
+        ws=$(int "${ws:-}") we=$(int "${we:-}")
+        [ "$(int "$(cat "$STATE/$t.last" 2>/dev/null)")" -lt "$ws" ] && [ "$we" -lt $(( ws + 18000 )) ] && [ "$we" -gt "$(now)" ] &&
+          [ "$we" -le $(( $(now) + 86400 )) ] && echo "$we" ;;
       watch) ts=$(reset_at "$t"); [ "$ts" -gt "$(now)" ] && [ "$ts" -le $(( $(now) + 86400 )) ] && echo "$ts" ;;
     esac
   done | sort -n | uniq

@@ -125,6 +125,13 @@ if [ "$past" != 23:59 ]; then
   echo "$(( n - 14400 )) $(( n - 60 ))" >"$T/state/claude.waits"
   lk tick;  check "5 5" "held time should go out once its window ends"
   lk tick;  check "5 5" "held time should go out once"
+  # Not past its own 5 hours: a window that ends later than that skips it, and the Mac doesn't wake for it.
+  rm -f "$T/state/claude.last"
+  echo "$(( n - 14400 )) $(( n + 7200 ))" >"$T/state/claude.waits"
+  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson w $(( n + 7200 )) '.wake.next != $w' >/dev/null ||
+    { echo "FAIL: no wake for a held time past its 5 hours"; exit 1; }
+  echo "$(( n - 20000 )) $(( n - 60 ))" >"$T/state/claude.waits"
+  lk tick;  check "5 5" "held time whose window ended after its 5 hours should be skipped"
   # Codex at 0% still reports a reset time; that is no open window, so the slot fires.
   cat >"$T/bin/codex" <<EOF2
 #!/bin/sh
