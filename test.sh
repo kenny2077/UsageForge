@@ -283,7 +283,7 @@ EOF
 rm -f "$T/state/claude.limits" "$T/state/claude.asked"; echo "$R" >"$T/state/claude.reset"
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json >/dev/null
 [ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: 0% /usage dropped the ping's reset ($(cat "$T/state/claude.reset") vs $R)"; exit 1; }
-# Claude Code 2.1.299 prints /usage as text only; the numbers are in its saved copy (~/.claude.json).
+# After a 429, /usage prints no numbers; Claude Code's saved copy (~/.claude.json) still has the last ones.
 # That copy is read without asking; asking again waits 15 min, since the endpoint answers 429 when asked often.
 R2=$(( $(date +%s) + 3000 )); A2=$(( $(date +%s) - 60 ))
 cat >"$T/bin/claude" <<EOF
