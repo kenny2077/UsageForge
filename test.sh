@@ -142,7 +142,13 @@ EOF2
   mkdir -p "$S"; lim 2026-10-11T11:00:00Z 0 $FUTURE >"$S/rollout-new.jsonl"; echo 1 >"$T/state/codex.reset"; rm -f "$T/state/codex.last"
   cfg '{"claude":{"mode":"schedule","times":["'$future'"]},"codex":{"mode":"schedule","times":["'$past'"]}}'
   lk tick;  check "5 6" "codex at 0% with a reset time should still fire its slot"
-  [ "$(uname)" != Darwin ] || grep -q "caffeinate -i -s -w" "$T/power" || { echo "FAIL: a tick should hold the Mac awake while it runs"; exit 1; }
+  if [ "$(uname)" = Darwin ]; then
+    grep -q "caffeinate -i -s -w" "$T/power" 2>/dev/null && { echo "FAIL: hold the Mac only after a wake we scheduled"; exit 1; }
+    W=$(( $(date +%s) - 30 )); echo "$W" >"$T/woke"; echo "$W" >"$T/state/wakes"
+    printf '#!/bin/sh\necho "{ sec = $(cat "%s/woke"), usec = 0 }"\n' "$T" >"$T/bin/sysctl"; chmod +x "$T/bin/sysctl"
+    lk tick; rm -f "$T/bin/sysctl" "$T/state/wakes"
+    grep -q "caffeinate -i -s -w" "$T/power" || { echo "FAIL: after a wake we scheduled, a tick should hold the Mac awake while it runs"; exit 1; }
+  fi
 fi
 # A rejection without a reset time must not mean "ping every tick".
 cat >"$T/bin/claude" <<EOF
@@ -245,9 +251,12 @@ if [ "$(uname)" = Darwin ]; then
   [ "$(power sleepnow)" = 0 ] || { echo "FAIL: back to sleep although someone used the Mac after the wake"; exit 1; }
   echo 230 >"$T/idle"; lk tick
   [ "$(power sleepnow)" = 1 ] || { echo "FAIL: should go back to sleep after a wake we scheduled"; exit 1; }
+  : >"$T/power"; lk tick
+  [ "$(power sleepnow)" = 0 ] && [ "$(power 'caffeinate -i -s')" = 0 ] || { echo "FAIL: once back asleep, that wake is done: no hold, no second sleep"; exit 1; }
+  rm -f "$T/state/slept"; : >"$T/power"
   printf '#!/bin/sh\nexit 1\n' >"$T/bin/claude"; chmod +x "$T/bin/claude"; rm -f "$T/state/claude.limits"
   cfg '{"claude":{"mode":"schedule","times":["'$(date -v+3H +%H:%M)'"]},"codex":{"mode":"off"}}'; lk tick
-  [ "$(power sleepnow)" = 1 ] || { echo "FAIL: should stay up until the usage is read"; exit 1; }
+  [ "$(power sleepnow)" = 0 ] || { echo "FAIL: should stay up until the usage is read"; exit 1; }
   grep -qx "$W" "$T/state/wakes" || { echo "FAIL: past wakes should be kept for a day"; exit 1; }
   rm -f "$T/bin/sysctl"
   rm -f "$T/bin/pmset" "$T/bin/ioreg"
@@ -274,6 +283,17 @@ EOF
 rm -f "$T/state/claude.limits"; echo "$R" >"$T/state/claude.reset"
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json >/dev/null
 [ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: 0% /usage dropped the ping's reset ($(cat "$T/state/claude.reset") vs $R)"; exit 1; }
+# Claude Code 2.1.299 prints /usage as text only.
+R2=$(( ($(date +%s) + 3000) / 60 * 60 ))
+W2=$(date -r $R2 '+%b %-d at %-I:%M%p' 2>/dev/null | tr APM apm || date -d @$R2 '+%b %-d at %-I:%M%P')
+cat >"$T/bin/claude" <<EOF
+#!/bin/sh
+printf '%s\n' '{"type":"result","result":"You are currently using your subscription\\n\\nCurrent session: 12% used · resets $W2\\nCurrent week (all models): 4% used · resets Oct 21 at 6:59pm (America/Chicago)\\n"}'
+EOF
+rm -f "$T/state/claude.limits"; echo 1 >"$T/state/claude.reset"
+HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.five_hour == 12 and .tools.claude.weekly == 4' >/dev/null ||
+  { echo "FAIL: /usage text numbers"; exit 1; }
+[ "$(cat "$T/state/claude.reset")" = "$R2" ] || { echo "FAIL: /usage text reset ($(cat "$T/state/claude.reset") vs $R2, '$W2')"; exit 1; }
 
 # Codex out of usage: the turn logs an error, not new numbers. Don't retry; show the window as full.
 lim 2026-10-10T19:23:00Z 92 $FUTURE >"$S/rollout-new.jsonl"; : >"$T/codex.calls"

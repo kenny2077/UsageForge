@@ -15,7 +15,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.8.3
+VERSION=3.8.4
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -140,12 +140,14 @@ codex_limits() {
 # Live Claude usage from Claude Code's own `/usage` command: it runs locally and sends no message,
 # so it costs no quota. Kept for LIVE_AGE; also tells the scheduler the real reset time.
 claude_usage() {
-  local rep safe=()
+  local out rep safe=()
   [ -n "$(find "$STATE/claude.limits" -mmin -"$LIVE_AGE" 2>/dev/null)" ] && return 0
   claude --help 2>/dev/null | grep -q -- --safe-mode && safe=(--safe-mode)
-  rep=$(cd "$STATE" && limit claude -p "/usage" --tools "" ${safe[@]+"${safe[@]}"} --setting-sources project \
-          --strict-mcp-config --no-session-persistence --output-format stream-json --verbose 2>/dev/null |
-        jq -c 'select(.usage_report) | .usage_report.rate_limits.limits // empty' 2>/dev/null | tail -1)
+  out=$(cd "$STATE" && limit claude -p "/usage" --tools "" ${safe[@]+"${safe[@]}"} --setting-sources project \
+          --strict-mcp-config --no-session-persistence --output-format stream-json --verbose 2>/dev/null)
+  rep=$(jq -c 'select(.usage_report) | .usage_report.rate_limits.limits // empty' <<<"$out" 2>/dev/null | tail -1)
+  # Claude Code 2.1.299 (2026-10-15) dropped usage_report: read the lines /usage prints instead.
+  [ -n "$rep" ] || rep=$(usage_text "$(jq -r 'select(.type == "result") | .result // empty' <<<"$out" 2>/dev/null)")
   [ -n "$rep" ] || return 0
   # is_active can be false while the window is open (seen 2026-10-08), so any usage counts as open too.
   rep=$(jq -c --argjson now "$(now)" '
@@ -164,6 +166,36 @@ claude_usage() {
     elif ($u.five_hour.resetsAt // 0) > $now then $u.five_hour.resetsAt
     elif $saved > $now then $saved else 0 end // 0' <<<"$rep" >"$STATE/claude.reset.$$" &&
     mv -f "$STATE/claude.reset.$$" "$STATE/claude.reset"
+}
+
+# usage_text <text>: "Current session: 2% used · resets Oct 15 at 11:29pm (America/Chicago)" and the
+# "Current week (all models)" line, as the limits list usage_report used to give.
+usage_text() {
+  local kind label line pct when tz ts list=""
+  for kind in session weekly_all; do
+    label="Current session:"; [ $kind = weekly_all ] && label="Current week (all models):"
+    line=$(grep -m1 -F "$label" <<<"$1") || continue
+    pct=$(sed -nE 's/.*: ([0-9.]+)% used.*/\1/p' <<<"$line")
+    [ -n "$pct" ] || continue
+    when=$(sed -nE 's/.*resets ([^(]*[^ (]).*/\1/p' <<<"$line") tz=$(sed -nE 's/.*\(([^)]*)\).*/\1/p' <<<"$line")
+    ts=$(usage_when "$when" "$tz")
+    list+="$(jq -nc --arg k $kind --argjson p "$pct" --argjson r "${ts:-null}" '{kind: $k, percent: $p, resets_at: $r, is_active: false}')"
+  done
+  [ -n "$list" ] && jq -sc . <<<"$list"
+}
+# usage_when "Oct 15 at 11:29pm" | "11:29pm" [time zone]: epoch second, the next one from now.
+usage_when() {
+  local s=${1/ at / } tz=${2:-} ts y
+  [[ $s =~ ^[0-9]{1,2}(:[0-9]{2})?[ap]m$ ]] && s="$(date +'%b %d') $s"
+  [[ $s =~ ^[A-Z][a-z]{2}\ [0-9]{1,2}\ [0-9]{1,2}[ap]m$ ]] && s="${s%[ap]m}:00${s: -2}"
+  [[ $s =~ ^[A-Z][a-z]{2}\ [0-9]{1,2}\ [0-9]{1,2}:[0-9]{2}[ap]m$ ]] || return 0
+  for y in $(date +%Y) $(( $(date +%Y) + 1 )); do
+    ts=$( { [ -n "$tz" ] && export TZ=$tz; date -j -f '%b %d %Y %I:%M%p %S' "${s% *} $y ${s##* } 00" +%s ||
+            date -d "${s% *} $y ${s##* }" +%s; } 2>/dev/null) || return 0   # BSD date, else GNU
+    [ "$ts" -ge $(( $(now) - 3600 )) ] && break
+    [[ $1 == *\ at\ * ]] || { ts=$(( ts + 86400 )); break; }   # time only, already past today: tomorrow
+  done
+  echo "$ts"
 }
 
 # Epoch second when the tool may next be pinged (0 = now). Always prints one integer.
@@ -313,9 +345,10 @@ due() {
 tick() {
   local t
   LIVE_AGE=${UF_LIVE_AGE:-15}
-  # Hold the Mac up until this run ends: after a scheduled wake (lid closed) macOS goes back to sleep
-  # within seconds, which froze the 11:00 message until the lid opened (2026-10-11). -s works on AC only.
-  [ "$(uname)" = Darwin ] && { caffeinate -i -s -w $$ >/dev/null 2>&1 & HOLD=$!; disown; }   # disown: no "Terminated" line in the log
+  # After a wake we scheduled, hold the Mac up until this run ends: with the lid closed macOS goes back
+  # to sleep within seconds, which froze the 11:00 message until the lid opened (2026-10-11). -s works
+  # on AC only. Only then, so a run that starts as the Mac goes to sleep doesn't hold it up.
+  [ "$(uname)" = Darwin ] && our_wake >/dev/null && { caffeinate -i -s -w $$ >/dev/null 2>&1 & HOLD=$!; disown; }   # disown: no "Terminated" line in the log
   [ "$(wc -l 2>/dev/null <"$STATE/log" || echo 0)" -gt 2000 ] && { tail -n 1000 "$STATE/log" >"$STATE/log.tmp" && mv -f "$STATE/log.tmp" "$STATE/log"; }
   for t in claude codex; do
     if ! command -v "$t" >/dev/null; then
@@ -399,6 +432,18 @@ sleep_check() {
   [ "$(idle_secs)" -ge 600 ] || return 0
   log "sleep: agents are done and nobody is using the Mac; going to sleep (Sleep switches off)"
   set_night '{sleep: false}'
+  sleep_now
+}
+
+waketime() { int "$(sysctl -n kern.waketime 2>/dev/null | sed -E 's/[^0-9]*([0-9]+).*/\1/')"; }
+# our_wake: the Mac's last wake is one we scheduled and haven't put back to sleep yet; prints its time.
+our_wake() {
+  local w; w=$(waketime)
+  awk -v w="$w" '$1 - w < 90 && w - $1 < 90 {f = 1} END {exit !f}' "$STATE/wakes" 2>/dev/null &&
+    [ "$(cat "$STATE/slept" 2>/dev/null)" != "$w" ] && echo "$w"
+}
+sleep_now() {
+  waketime >"$STATE/slept"
   [ -n "${HOLD:-}" ] && kill "$HOLD" 2>/dev/null
   pmset sleepnow >/dev/null 2>&1
 }
@@ -409,8 +454,7 @@ sleep_check() {
 back_to_sleep() {
   [ "$(uname)" = Darwin ] && wake_on || return 0
   local w t ts
-  w=$(int "$(sysctl -n kern.waketime 2>/dev/null | sed -E 's/[^0-9]*([0-9]+).*/\1/')")
-  awk -v w="$w" '$1 - w < 90 && w - $1 < 90 {f = 1} END {exit !f}' "$STATE/wakes" 2>/dev/null || return 0
+  w=$(our_wake) || return 0
   [ $(( $(idle_secs) + 120 )) -ge $(( $(now) - w )) ] || return 0   # someone has used it since
   agents_busy && return 0
   for ts in $(due_times); do [ "$ts" -le $(( $(now) + 900 )) ] && return 0; done
@@ -426,8 +470,7 @@ back_to_sleep() {
     esac
   done
   log "wake: messages sent and usage read; nobody is using the Mac, so back to sleep"
-  [ -n "${HOLD:-}" ] && kill "$HOLD" 2>/dev/null
-  pmset sleepnow >/dev/null 2>&1
+  sleep_now
 }
 
 wake_allowed() { sudo -n -l /usr/bin/pmset schedule wake "01/01/30 00:00:00" >/dev/null 2>&1; }
@@ -510,6 +553,10 @@ start() {
   </dict>
   <key>StartInterval</key><integer>300</integer>
   <key>RunAtLoad</key><true/>
+  <!-- Also on every wake and sleep: launchd's 5-minute timer often misses the few seconds a lid-closed Mac stays up. -->
+  <key>LaunchEvents</key><dict><key>com.apple.notifyd.matching</key><dict>
+    <key>power</key><dict><key>Notification</key><string>com.apple.powermanagement.systempowerstate</string></dict>
+  </dict></dict>
   <key>AbandonProcessGroup</key><true/>
   <key>StandardOutPath</key><string>/dev/null</string>
   <key>StandardErrorPath</key><string>$(xml "$STATE/log")</string>
