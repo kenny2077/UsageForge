@@ -15,7 +15,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.8.4
+VERSION=3.8.5
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -26,6 +26,7 @@ case $STATE in /*) ;; *) STATE="$PWD/$STATE" ;; esac   # launchd runs jobs from 
 CONFIG="$STATE/config.json"
 TOOLS="${UF_TOOLS:-$(command -v claude >/dev/null && echo claude) $(command -v codex >/dev/null && echo codex)}"
 SESSIONS="${CODEX_HOME:-$HOME/.codex}/sessions"
+CLAUDE_JSON="${CLAUDE_CONFIG_DIR:-$HOME}/.claude.json"
 LABEL=dev.usageforge
 PLIST="$HOME/Library/LaunchAgents/$LABEL.plist"
 # Resolve symlinks (e.g. ~/.local/bin/usageforge -> repo) so `ui` can find ui/server.py.
@@ -137,24 +138,35 @@ codex_limits() {
       then $r | .primary.used_percent = 100 else $r end' 2>/dev/null
 }
 
-# Live Claude usage from Claude Code's own `/usage` command: it runs locally and sends no message,
-# so it costs no quota. Kept for LIVE_AGE; also tells the scheduler the real reset time.
+# Claude's usage, as Claude Code's own /usage gets it from Anthropic: no message is sent, so it costs no
+# quota. Claude Code keeps what it last fetched in ~/.claude.json, and the endpoint answers 429 when asked
+# often (seen 2026-10-15, after the menu bar asked every 5 min): so read that copy, and ask again only when
+# it is older than LIVE_AGE minutes or than our last ping, at most every 15 min (1 for the Refresh button).
+claude_cache() {
+  jq -c '.cachedUsageUtilization // empty | select(.utilization.limits) |
+    {at: ((.fetchedAtMs // 0) / 1000 | floor), limits: .utilization.limits}' "$CLAUDE_JSON" 2>/dev/null
+}
 claude_usage() {
-  local out rep safe=()
-  [ -n "$(find "$STATE/claude.limits" -mmin -"$LIVE_AGE" 2>/dev/null)" ] && return 0
-  claude --help 2>/dev/null | grep -q -- --safe-mode && safe=(--safe-mode)
-  out=$(cd "$STATE" && limit claude -p "/usage" --tools "" ${safe[@]+"${safe[@]}"} --setting-sources project \
-          --strict-mcp-config --no-session-persistence --output-format stream-json --verbose 2>/dev/null)
-  rep=$(jq -c 'select(.usage_report) | .usage_report.rate_limits.limits // empty' <<<"$out" 2>/dev/null | tail -1)
-  # Claude Code 2.1.299 (2026-10-15) dropped usage_report: read the lines /usage prints instead.
-  [ -n "$rep" ] || rep=$(usage_text "$(jq -r 'select(.type == "result") | .result // empty' <<<"$out" 2>/dev/null)")
+  local out="" rep at gap=15 safe=()
+  [ "$LIVE_AGE" = 0 ] && gap=1
+  at=$(int "$(claude_cache | jq '.at')")
+  if { [ "$at" -lt $(( $(now) - LIVE_AGE * 60 )) ] || [ "$at" -lt "$(int "$(cat "$STATE/claude.last" 2>/dev/null)")" ]; } &&
+     [ $(( $(now) - $(int "$(stat -f %m "$STATE/claude.asked" 2>/dev/null || stat -c %Y "$STATE/claude.asked" 2>/dev/null)") )) -ge $(( gap * 60 )) ]; then
+    touch "$STATE/claude.asked"
+    claude --help 2>/dev/null | grep -q -- --safe-mode && safe=(--safe-mode)
+    out=$(cd "$STATE" && limit claude -p "/usage" --tools "" ${safe[@]+"${safe[@]}"} --setting-sources project \
+            --strict-mcp-config --no-session-persistence --output-format stream-json --verbose 2>/dev/null)
+  fi
+  # Claude Code before 2.1.299 printed the numbers with the reply; newer ones only save them.
+  rep=$(jq -c --argjson now "$(now)" 'select(.usage_report) | {at: $now, limits: .usage_report.rate_limits.limits}' <<<"$out" 2>/dev/null | tail -1)
+  [ -n "$rep" ] || rep=$(claude_cache)
   [ -n "$rep" ] || return 0
   # is_active can be false while the window is open (seen 2026-10-08), so any usage counts as open too.
-  rep=$(jq -c --argjson now "$(now)" '
+  rep=$(jq -c '
     def secs: if . == null then null elif type == "string"
       then (sub("\\.[0-9]+"; "") | sub("[+]00:00$"; "Z") | try fromdateiso8601 catch null) else . end;
-    (map(select(.kind == "session")) | first) as $s | (map(select(.kind == "weekly_all")) | first) as $w |
-    {source: "usage", at: $now, unifiedWindows: {
+    .at as $at | .limits | (map(select(.kind == "session")) | first) as $s | (map(select(.kind == "weekly_all")) | first) as $w |
+    {source: "usage", at: $at, unifiedWindows: {
       five_hour: {utilization: (($s.percent // 0) / 100), resetsAt: (if $s.is_active or ($s.percent // 0) > 0 then ($s.resets_at | secs) else null end)},
       seven_day: {utilization: (($w.percent // 0) / 100), resetsAt: ($w.resets_at | secs)}}}' <<<"$rep") || return 0
   echo "$rep" >"$STATE/claude.limits.$$" && mv -f "$STATE/claude.limits.$$" "$STATE/claude.limits"
@@ -166,36 +178,6 @@ claude_usage() {
     elif ($u.five_hour.resetsAt // 0) > $now then $u.five_hour.resetsAt
     elif $saved > $now then $saved else 0 end // 0' <<<"$rep" >"$STATE/claude.reset.$$" &&
     mv -f "$STATE/claude.reset.$$" "$STATE/claude.reset"
-}
-
-# usage_text <text>: "Current session: 2% used · resets Oct 15 at 11:29pm (America/Chicago)" and the
-# "Current week (all models)" line, as the limits list usage_report used to give.
-usage_text() {
-  local kind label line pct when tz ts list=""
-  for kind in session weekly_all; do
-    label="Current session:"; [ $kind = weekly_all ] && label="Current week (all models):"
-    line=$(grep -m1 -F "$label" <<<"$1") || continue
-    pct=$(sed -nE 's/.*: ([0-9.]+)% used.*/\1/p' <<<"$line")
-    [ -n "$pct" ] || continue
-    when=$(sed -nE 's/.*resets ([^(]*[^ (]).*/\1/p' <<<"$line") tz=$(sed -nE 's/.*\(([^)]*)\).*/\1/p' <<<"$line")
-    ts=$(usage_when "$when" "$tz")
-    list+="$(jq -nc --arg k $kind --argjson p "$pct" --argjson r "${ts:-null}" '{kind: $k, percent: $p, resets_at: $r, is_active: false}')"
-  done
-  [ -n "$list" ] && jq -sc . <<<"$list"
-}
-# usage_when "Oct 15 at 11:29pm" | "11:29pm" [time zone]: epoch second, the next one from now.
-usage_when() {
-  local s=${1/ at / } tz=${2:-} ts y
-  [[ $s =~ ^[0-9]{1,2}(:[0-9]{2})?[ap]m$ ]] && s="$(date +'%b %d') $s"
-  [[ $s =~ ^[A-Z][a-z]{2}\ [0-9]{1,2}\ [0-9]{1,2}[ap]m$ ]] && s="${s%[ap]m}:00${s: -2}"
-  [[ $s =~ ^[A-Z][a-z]{2}\ [0-9]{1,2}\ [0-9]{1,2}:[0-9]{2}[ap]m$ ]] || return 0
-  for y in $(date +%Y) $(( $(date +%Y) + 1 )); do
-    ts=$( { [ -n "$tz" ] && export TZ=$tz; date -j -f '%b %d %Y %I:%M%p %S' "${s% *} $y ${s##* } 00" +%s ||
-            date -d "${s% *} $y ${s##* }" +%s; } 2>/dev/null) || return 0   # BSD date, else GNU
-    [ "$ts" -ge $(( $(now) - 3600 )) ] && break
-    [[ $1 == *\ at\ * ]] || { ts=$(( ts + 86400 )); break; }   # time only, already past today: tomorrow
-  done
-  echo "$ts"
 }
 
 # Epoch second when the tool may next be pinged (0 = now). Always prints one integer.
@@ -227,8 +209,8 @@ ping_claude() {
           --setting-sources project --strict-mcp-config --no-session-persistence \
           --output-format stream-json --verbose 2>>"$STATE/log") || ok=1
   out=$(jq -Rc 'fromjson? | select(.type == "rate_limit_event") | .rate_limit_info' <<<"$out" | tail -1)
-  # The meters come from /usage, in their own shape: just make the next read fresh.
-  rm -f "$STATE/claude.limits"
+  # The meters come from /usage, in their own shape: let the next read ask for fresh ones.
+  rm -f "$STATE/claude.asked"
   if [ "$(jq -r '.status // empty' <<<"$out")" = rejected ]; then
     r=$(int "$(jq -r '.resetsAt // empty' <<<"$out")")
     echo $(( r > 0 ? r : $(now) + 900 )) >"$STATE/claude.reset"; return 2
@@ -465,7 +447,8 @@ back_to_sleep() {
     [ $(( $(now) - w )) -lt 3600 ] || continue
     [ "$(now)" -lt "$(int "$(cat "$STATE/$t.backoff" 2>/dev/null)")" ] && return 0
     case $t in
-      claude) claude_usage; [ -n "$(find "$STATE/claude.limits" -mmin -"$LIVE_AGE" 2>/dev/null)" ] || return 0 ;;
+      claude) claude_usage
+              [ -s "$STATE/claude.limits" ] && [ "$(int "$(jq '.at' "$STATE/claude.limits")")" -ge "$(int "$(cat "$STATE/claude.last" 2>/dev/null)")" ] || return 0 ;;
       codex) codex_live >/dev/null || return 0 ;;
     esac
   done

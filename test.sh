@@ -146,7 +146,7 @@ EOF2
     grep -q "caffeinate -i -s -w" "$T/power" 2>/dev/null && { echo "FAIL: hold the Mac only after a wake we scheduled"; exit 1; }
     W=$(( $(date +%s) - 30 )); echo "$W" >"$T/woke"; echo "$W" >"$T/state/wakes"
     printf '#!/bin/sh\necho "{ sec = $(cat "%s/woke"), usec = 0 }"\n' "$T" >"$T/bin/sysctl"; chmod +x "$T/bin/sysctl"
-    lk tick; rm -f "$T/bin/sysctl" "$T/state/wakes"
+    lk tick; sleep 1; rm -f "$T/bin/sysctl" "$T/state/wakes"   # caffeinate starts in the background
     grep -q "caffeinate -i -s -w" "$T/power" || { echo "FAIL: after a wake we scheduled, a tick should hold the Mac awake while it runs"; exit 1; }
   fi
 fi
@@ -271,7 +271,7 @@ cat >"$T/bin/claude" <<EOF
 [ "\$2" = /usage ] || exit 1
 echo '{"type":"assistant","usage_report":{"rate_limits":{"limits":[{"kind":"session","percent":40,"resets_at":"$(date -u -r $R +%Y-%m-%dT%H:%M:%S.123456+00:00 2>/dev/null || date -u -d @$R +%Y-%m-%dT%H:%M:%S.123456+00:00)","is_active":false},{"kind":"weekly_all","percent":70,"resets_at":"2030-01-01T00:00:00+00:00"}]}}}'
 EOF
-rm -f "$T/state/claude.limits"
+rm -f "$T/state/claude.limits" "$T/state/claude.asked"
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.five_hour == 40 and .tools.claude.weekly == 70' >/dev/null ||
   { echo "FAIL: /usage numbers"; exit 1; }
 [ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: /usage reset time ($(cat "$T/state/claude.reset") vs $R)"; exit 1; }
@@ -280,20 +280,29 @@ cat >"$T/bin/claude" <<EOF
 #!/bin/sh
 echo '{"type":"assistant","usage_report":{"rate_limits":{"limits":[{"kind":"session","percent":0,"resets_at":"2030-01-01T00:00:00+00:00","is_active":false},{"kind":"weekly_all","percent":70,"resets_at":"2030-01-01T00:00:00+00:00"}]}}}'
 EOF
-rm -f "$T/state/claude.limits"; echo "$R" >"$T/state/claude.reset"
+rm -f "$T/state/claude.limits" "$T/state/claude.asked"; echo "$R" >"$T/state/claude.reset"
 HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json >/dev/null
 [ "$(cat "$T/state/claude.reset")" = "$R" ] || { echo "FAIL: 0% /usage dropped the ping's reset ($(cat "$T/state/claude.reset") vs $R)"; exit 1; }
-# Claude Code 2.1.299 prints /usage as text only.
-R2=$(( ($(date +%s) + 3000) / 60 * 60 ))
-W2=$(date -r $R2 '+%b %-d at %-I:%M%p' 2>/dev/null | tr APM apm || date -d @$R2 '+%b %-d at %-I:%M%P')
+# Claude Code 2.1.299 prints /usage as text only; the numbers are in its saved copy (~/.claude.json).
+# That copy is read without asking; asking again waits 15 min, since the endpoint answers 429 when asked often.
+R2=$(( $(date +%s) + 3000 )); A2=$(( $(date +%s) - 60 ))
 cat >"$T/bin/claude" <<EOF
 #!/bin/sh
-printf '%s\n' '{"type":"result","result":"You are currently using your subscription\\n\\nCurrent session: 12% used · resets $W2\\nCurrent week (all models): 4% used · resets Oct 21 at 6:59pm (America/Chicago)\\n"}'
+[ "\$2" = /usage ] || exit 0
+echo x >>"$T/usage.calls"
+printf '%s\n' '{"cachedUsageUtilization":{"fetchedAtMs":${A2}000,"utilization":{"limits":[{"kind":"session","percent":12,"resets_at":"$(date -u -r $R2 +%Y-%m-%dT%H:%M:%S.5+00:00 2>/dev/null || date -u -d @$R2 +%Y-%m-%dT%H:%M:%S.5+00:00)","is_active":false},{"kind":"weekly_all","percent":4,"resets_at":"2030-01-01T00:00:00+00:00"}]}}}' >"$T/home/.claude.json"
+printf '%s\n' '{"type":"result","result":"Current session: 12% used"}'
 EOF
-rm -f "$T/state/claude.limits"; echo 1 >"$T/state/claude.reset"
-HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e '.tools.claude.five_hour == 12 and .tools.claude.weekly == 4' >/dev/null ||
-  { echo "FAIL: /usage text numbers"; exit 1; }
-[ "$(cat "$T/state/claude.reset")" = "$R2" ] || { echo "FAIL: /usage text reset ($(cat "$T/state/claude.reset") vs $R2, '$W2')"; exit 1; }
+rm -f "$T/state/claude.limits" "$T/state/claude.asked" "$T/home/.claude.json" "$T/usage.calls"; echo 1 >"$T/state/claude.reset"
+st() { HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" "$@" ./usageforge status --json; }
+st | jq -e --argjson a $A2 '.tools.claude.five_hour == 12 and .tools.claude.weekly == 4 and .tools.claude.updated == $a' >/dev/null ||
+  { echo "FAIL: /usage numbers from Claude Code's saved copy"; exit 1; }
+[ "$(cat "$T/state/claude.reset")" = "$R2" ] || { echo "FAIL: /usage reset from the saved copy ($(cat "$T/state/claude.reset") vs $R2)"; exit 1; }
+st >/dev/null; st env UF_LIVE_AGE=0 >/dev/null
+[ "$(wc -l <"$T/usage.calls")" -eq 1 ] || { echo "FAIL: ask /usage at most every 15 min, 1 for Refresh ($(wc -l <"$T/usage.calls") asks)"; exit 1; }
+touch -t "$(date -v-2M +%Y%m%d%H%M 2>/dev/null || date -d '-2 min' +%Y%m%d%H%M)" "$T/state/claude.asked"; st env UF_LIVE_AGE=0 >/dev/null
+[ "$(wc -l <"$T/usage.calls")" -eq 2 ] || { echo "FAIL: Refresh should ask again after a minute"; exit 1; }
+rm -f "$T/home/.claude.json"
 
 # Codex out of usage: the turn logs an error, not new numbers. Don't retry; show the window as full.
 lim 2026-10-10T19:23:00Z 92 $FUTURE >"$S/rollout-new.jsonl"; : >"$T/codex.calls"

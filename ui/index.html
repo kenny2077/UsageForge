@@ -627,7 +627,8 @@ function renderTool(tool) {
   const now = state?.now || Date.now() / 1000;
   const open = s.reset > now;
 
-  q(".sub").textContent = s.installed ? "Ready" : `Not found on this computer`;
+  // Anthropic lets Claude Code read the usage only every so often: say when the numbers are old.
+  q(".sub").textContent = !s.installed ? "Not found on this computer" : s.updated && now - s.updated > 1200 ? `Usage as of ${when(s.updated)}` : "Ready";
   q(".sub").classList.toggle("warn", !s.installed);
 
   let text = "Off";
