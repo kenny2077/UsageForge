@@ -106,9 +106,10 @@ body.stale .meter { opacity: 0.4; }
 .zones { display: grid; grid-template-columns: repeat(4, 1fr); margin-bottom: 6px; color: var(--faint); font-size: 11px; font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; }
 .zones span { padding-left: 6px; border-left: 1px solid var(--line); }
 .bar {
-  position: relative; height: 76px; cursor: pointer; border-radius: var(--r-sm); overflow: hidden;
+  position: relative; height: 76px; cursor: pointer; border-radius: var(--r-sm); overflow: hidden; contain: layout paint;
   background:
     radial-gradient(circle, rgba(168, 186, 224, 0.2) 1px, transparent 1.5px) 0 0 / calc(100% / 48) 12px,
+    linear-gradient(90deg, rgba(168, 186, 224, 0.07) 1px, transparent 1px) 0 0 / calc(100% / 24) 100%,
     linear-gradient(90deg, rgba(0, 0, 0, 0.35) 0 25%, transparent 25% 87.5%, rgba(0, 0, 0, 0.25) 87.5%),
     var(--void);
   box-shadow: inset 0 0 0 1px var(--line-2);
@@ -117,8 +118,15 @@ body.stale .meter { opacity: 0.4; }
 .bar.ro .band { padding-right: 8px; }   /* no × to make room for */
 .bar.watch { background: radial-gradient(circle, rgba(168, 186, 224, 0.2) 1px, transparent 1.5px) 0 0 / calc(100% / 48) 12px, var(--void); }
 .bar:not(.ro):hover { box-shadow: inset 0 0 0 1px rgba(188, 215, 255, 0.45); }
-.ghosthour { position: absolute; top: 0; bottom: 0; width: calc(100% / 24); background: rgba(188, 215, 255, 0.1); pointer-events: none; opacity: 0; transition: opacity 0.15s; }
-.bar:not(.ro):hover .ghosthour { opacity: 1; }
+/* Hovering an empty hour shows the window a click would add: its start, its end, or what it overlaps. */
+.preview { position: absolute; top: 9px; bottom: 9px; display: none; flex-direction: column; justify-content: center; gap: 4px; padding: 0 11px; overflow: hidden; white-space: nowrap; pointer-events: none;
+  border-radius: 6px; color: var(--hot); background: rgba(243, 180, 106, 0.1); box-shadow: inset 0 0 0 1px rgba(243, 180, 106, 0.55); }
+.preview b { font: 600 13.5px/1 var(--mono); } .preview span { font: 500 11.5px/1 var(--mono); opacity: 0.8; }
+.preview.bad { background: rgba(255, 122, 107, 0.1); box-shadow: inset 0 0 0 1px rgba(255, 122, 107, 0.5); }
+.preview.bad > *, .preview.bare > * { visibility: hidden; }   /* the ruler chip says it; windows stay readable */
+.band { z-index: 1; }
+.bar.previewing .preview { display: flex; }
+.bar.previewing .empty-bar { visibility: hidden; }
 .band {
   position: absolute; top: 9px; bottom: 9px; display: flex; flex-direction: column; justify-content: center; gap: 4px;
   padding: 0 26px 0 11px; overflow: hidden; white-space: nowrap; cursor: grab; touch-action: none; border-radius: 6px;
@@ -134,12 +142,18 @@ body.stale .meter { opacity: 0.4; }
 .band .x { position: absolute; top: 5px; right: 5px; display: grid; place-items: center; width: 18px; height: 18px; border: 0; padding: 0; border-radius: 50%; cursor: pointer; color: var(--gold-ink); background: rgba(27, 19, 8, 0.14); }
 .band .x:hover { background: rgba(27, 19, 8, 0.32); }
 .band .x svg { width: 10px; height: 10px; stroke-width: 2; }
-.nowline { position: absolute; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ring); pointer-events: none; }
+.nowline { position: absolute; z-index: 2; top: 0; bottom: 0; width: 2px; margin-left: -1px; background: var(--ring); pointer-events: none; }
 .nowline span { position: absolute; bottom: 4px; left: 6px; padding: 2px 6px; border-radius: 4px; font: 600 10.5px/1 var(--sans); letter-spacing: 0.06em; color: var(--void); background: var(--ring); }
 .empty-bar { position: absolute; inset: 0; display: grid; place-items: center; color: var(--ink-2); font-size: 14px; pointer-events: none; }
+/* The ruler: a mark every hour, a longer one with a label every 3 hours, and the hovered hour lit. */
 .ticks { position: relative; height: 14px; margin-top: 8px; color: var(--faint); font: 500 11px/1 var(--mono); }
+.ticks.hours { height: 24px; margin-top: 0; padding-top: 10px;
+  background: linear-gradient(90deg, var(--line-2) 1px, transparent 1px) 0 0 / calc(100% / 24) 4px repeat-x, linear-gradient(90deg, var(--muted) 1px, transparent 1px) 0 0 / calc(100% / 8) 7px repeat-x; }
 .ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-.ticks span:first-child { transform: none; } .ticks span:last-child { transform: translateX(-100%); }
+.ticks span:first-child { transform: none; } .ticks span:nth-last-child(2) { transform: translateX(-100%); }
+.ticks span.at { z-index: 1; top: 6px; padding: 3px 6px; border-radius: 4px; color: var(--void); background: var(--hot); transform: none; visibility: hidden; }
+.ticks span.at.on { visibility: visible; }
+.ticks span.at.bad { color: #fff; background: var(--flare); }
 
 /* Repeat days: a dropdown, closed until you need it */
 .repeat { position: relative; }
@@ -256,7 +270,7 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
   .meters { padding: 0 16px 18px; }
   .modes { grid-template-columns: 1fr; } .mode { border-left: 0; border-top: 1px solid var(--line); } .mode:first-child { border-top: 0; }
   .band { padding: 0 22px 0 6px; } .band span { display: none; } .band b { font-size: 12px; }
-  .ticks span:nth-child(even) { display: none; }
+  .ticks span:not(.at):nth-child(even) { display: none; }
   .zones { letter-spacing: 0.02em; }
   .synced { margin-left: 0; }
   .nrows { grid-template-columns: 1fr; }
@@ -490,9 +504,9 @@ function drawDay(node, items, { origin = 0, editable = false } = {}) {
     const now = document.createElement("div"); now.className = "nowline"; now.style.left = left(nowMins());
     const tag = document.createElement("span"); tag.textContent = "now"; now.append(tag); bar.append(now);
   }
-  if (editable) { const g = document.createElement("div"); g.className = "ghosthour"; bar.append(g); }
   const ticks = node.querySelector(".ticks");
   ticks.innerHTML = "";
+  ticks.classList.toggle("hours", !origin);
   // Midnight-based days get a tick every 3 hours; "next 24 hours" ticks fall on odd minutes, so space them out.
   for (let k = 0; k <= 1440; k += origin ? 360 : 180) {
     const span = document.createElement("span");
@@ -500,6 +514,10 @@ function drawDay(node, items, { origin = 0, editable = false } = {}) {
     span.textContent = origin && k === 0 ? "Now" : clock(origin + k).replace(":00", "");
     ticks.append(span);
   }
+  // The hover preview lives on across redraws (every 30 s), so it doesn't flicker under the pointer.
+  // The ruler's hour chip is always its last child, so the last label is the one before it.
+  if (editable) bar.append(...node.hover.pieces);
+  ticks.append(node.hover.at);
 }
 
 // ---------- Rendering ----------
@@ -548,9 +566,36 @@ function build() {
     const bar = q(".bar");
     const hourAt = (x) => { const r = bar.getBoundingClientRect(); return Math.max(0, Math.min(23, Math.floor(((x - r.left) / r.width) * 24))); };
     let drag = null;
+    // The window a click would add, drawn only when the hovered hour changes. A window past midnight
+    // continues at the left edge, as the real ones do.
+    const piece = () => Object.assign(document.createElement("div"), { className: "preview" });
+    const hover = node.hover = { pieces: [piece(), piece()], at: Object.assign(document.createElement("span"), { className: "at" }), h: -1 };
+    hover.pieces[0].append(document.createElement("b"), document.createElement("span"));
+    const preview = (h) => {
+      if (h === hover.h) return;
+      hover.h = h;
+      bar.classList.toggle("previewing", h >= 0);
+      hover.at.classList.toggle("on", h >= 0);
+      if (h < 0) return;
+      const m = h * 60, c = config[tool], t = `${pad(h)}:00`;
+      const hit = c.times.includes(t) ? t : clash(c.times, m);
+      const [head, tail] = hover.pieces;
+      head.style.left = `${(m / 1440) * 100}%`; head.style.width = `${(Math.min(WINDOW, 1440 - m) / 1440) * 100}%`;
+      tail.style.left = "0"; tail.style.width = `${(Math.max(0, m + WINDOW - 1440) / 1440) * 100}%`;
+      tail.style.visibility = m + WINDOW > 1440 ? "" : "hidden";
+      head.classList.toggle("bare", 1440 - m < 120);   // too narrow for its label
+      for (const p of [...hover.pieces, hover.at]) p.classList.toggle("bad", !!hit);
+      head.firstChild.textContent = clock(m);
+      head.lastChild.textContent = `to ${clock(m + WINDOW)}`;
+      const at = clock(m).replace(":00", "");
+      hover.at.textContent = hit ? `${at} overlaps your ${clock(mins(hit)).replace(":00", "")} window` : at;
+      // Centred on the hour's mark, kept inside the ruler at either end.
+      const W = hover.at.parentNode.clientWidth, w = hover.at.offsetWidth;
+      hover.at.style.left = `${Math.max(0, Math.min(W - w, (h / 24) * W - w / 2))}px`;
+    };
+    bar.addEventListener("pointerleave", () => preview(-1));
     bar.addEventListener("pointermove", (e) => {
-      const g = bar.querySelector(".ghosthour");
-      if (g && !drag) g.style.left = `${(hourAt(e.clientX) / 24) * 100}%`;
+      if (!drag) preview(config[tool].mode === "schedule" && e.pointerType === "mouse" && !e.target.closest(".band") ? hourAt(e.clientX) : -1);
       if (!drag) return;
       const r = bar.getBoundingClientRect();
       const delta = Math.round((((e.clientX - drag.x) / r.width) * 1440) / 15) * 15;
@@ -595,6 +640,7 @@ function build() {
         return renderTool(tool), save();
       }
       if (e.target.closest(".band")) return;
+      preview(-1);
       addTime(`${pad(hourAt(e.clientX))}:00`);
     });
     q(".days").addEventListener("click", (e) => {
