@@ -15,7 +15,7 @@
 # `schedule` and `watch` apply to UF_TOOLS (default: whichever of claude/codex is installed).
 set -uo pipefail
 umask 077
-VERSION=3.8.7
+VERSION=3.8.8
 
 # Codex ships inside the ChatGPT desktop app; use that copy when no codex CLI is installed.
 APP_CODEX=/Applications/ChatGPT.app/Contents/Resources/codex-cli/bin
@@ -280,6 +280,29 @@ added() {
   echo "$a"
 }
 
+# next_slot <tool> <slot>: the first set time at least 5 hours after that one, on its days (0 = none).
+# Closer ones overlap it (the panel won't save those), so they never decide anything.
+next_slot() {
+  local time d ts n=0 days; days=$(cfg "$1" days)
+  for time in $(cfg "$1" times); do
+    for d in -1 0 1 2; do
+      ts=$(( $(int "$(at "$time")") + d * 86400 ))
+      [ -z "$days" ] || [[ " $days " == *" $(( ($(date +%w) + 7 + d) % 7 )) "* ]] || continue
+      [ "$ts" -ge $(( $2 + 18000 )) ] && { [ "$n" = 0 ] || [ "$ts" -lt "$n" ]; } && n=$ts
+    done
+  done
+  echo "$n"
+}
+
+# held <tool> <slot> <end>: may a set time held back by a window ending then still go out? Only inside
+# its own 5 hours, and only if its window would end by the next set time (15 min grace): a 21:00 held
+# until 03:12 pushed 06:00 to 08:18 (2026-10-14), and with 6, 11, 16 and 21 a 6:00 held until 9:00
+# pushed every later time by 3 hours (2026-10-21). Skipped, the next set time goes out on time.
+held() {
+  local n; n=$(next_slot "$1" "$2")
+  [ "$3" -lt $(( $2 + 18000 )) ] && { [ "$n" = 0 ] || [ $(( $3 + 18000 )) -le $(( n + 900 )) ]; }
+}
+
 # due <tool>: should this tool be pinged right now, according to its mode?
 due() {
   local t=$1 days time times ts last slot="" r ws we
@@ -302,12 +325,10 @@ due() {
           [ "$(now)" -ge "$ts" ] && [ "$(now)" -lt $(( ts + 10800 )) ] && [ "$last" -lt "$ts" ] && [ "$(added "$t" "$time")" -lt "$ts" ] && slot=$ts
         done
       done
-      # A set time held back by an open window goes out once that window ends, even past its 3 h, but only
-      # inside its own 5 hours: a 21:00 held until 03:12 then pushed 06:00 to 08:18, and the rest of the
-      # day along with it (2026-10-14).
+      # A set time held back by an open window goes out once that window ends, even past its 3 h (see held).
       if [ -z "$slot" ]; then
         { read -r ws we <"$STATE/$t.waits"; } 2>/dev/null; ws=$(int "${ws:-}") we=$(int "${we:-}")
-        [ "$last" -lt "$ws" ] && [ "$we" -lt $(( ws + 18000 )) ] && [ "$(now)" -ge "$we" ] && [ "$(now)" -lt $(( we + 10800 )) ] && slot=$ws
+        [ "$last" -lt "$ws" ] && held "$t" "$ws" "$we" && [ "$(now)" -ge "$we" ] && [ "$(now)" -lt $(( we + 10800 )) ] && slot=$ws
       fi
       [ -n "$slot" ] || return 1
       # A message inside an open window doesn't start a new one: wait for it to end.
@@ -315,8 +336,9 @@ due() {
       r=$(reset_at "$t")
       [ "$(now)" -ge "$r" ] && return 0
       if [ "$(cut -d' ' -f1 "$STATE/$t.waits" 2>/dev/null)" != "$slot" ]; then
-        if [ "$r" -lt $(( slot + 18000 )) ]; then log "$t: $(fmt "$slot") goes out when the open window ends ($(fmt "$r"))" >/dev/null
-        else log "$t: $(fmt "$slot") skipped: nothing can start until $(fmt "$r"), after its 5 hours" >/dev/null; fi
+        if held "$t" "$slot" "$r"; then log "$t: $(fmt "$slot") goes out when the open window ends ($(fmt "$r"))" >/dev/null
+        elif [ "$r" -ge $(( slot + 18000 )) ]; then log "$t: $(fmt "$slot") skipped: nothing can start until $(fmt "$r"), after its 5 hours" >/dev/null
+        else log "$t: $(fmt "$slot") skipped: the open window ends $(fmt "$r"), too late to start one before $(fmt "$(next_slot "$t" "$slot")")" >/dev/null; fi
       fi
       echo "$slot $r" >"$STATE/$t.waits"
       return 1 ;;
@@ -367,23 +389,24 @@ idle_secs() { int "$(ioreg -c IOHIDSystem 2>/dev/null | awk '/HIDIdleTime/ {prin
 # The moments a message is due in the next 24 hours (for one tool, if named): set times on their days, and the end of the
 # open window for tools in Back to back mode. One epoch second per line.
 due_times() {
-  local t time d ts days ws we
+  local t time d ts days ws we r
   for t in ${1:-claude codex}; do
     command -v "$t" >/dev/null || continue
     case $(cfg "$t" mode) in
       schedule)
-        days=$(cfg "$t" days)
+        days=$(cfg "$t" days) r=$(reset_at "$t")
         for time in $(cfg "$t" times); do
           for d in 0 1; do
             ts=$(( $(int "$(at "$time" 2>/dev/null)") + d * 86400 ))
             [ -z "$days" ] || [[ " $days " == *" $(( ($(date +%w) + d) % 7 )) "* ]] || continue
+            [ "$r" -gt "$ts" ] && ! held "$t" "$ts" "$r" && continue   # the open window makes it skip (see held)
             [ "$ts" -gt "$(now)" ] && [ "$ts" -le $(( $(now) + 86400 )) ] && echo "$ts"
           done
         done
         # A set time waiting for an open window to end.
         ws="" we=""; { read -r ws we <"$STATE/$t.waits"; } 2>/dev/null
         ws=$(int "${ws:-}") we=$(int "${we:-}")
-        [ "$(int "$(cat "$STATE/$t.last" 2>/dev/null)")" -lt "$ws" ] && [ "$we" -lt $(( ws + 18000 )) ] && [ "$we" -gt "$(now)" ] &&
+        [ "$(int "$(cat "$STATE/$t.last" 2>/dev/null)")" -lt "$ws" ] && held "$t" "$ws" "$we" && [ "$we" -gt "$(now)" ] &&
           [ "$we" -le $(( $(now) + 86400 )) ] && echo "$we" ;;
       watch) ts=$(reset_at "$t"); [ "$ts" -gt "$(now)" ] && [ "$ts" -le $(( $(now) + 86400 )) ] && echo "$ts" ;;
     esac
