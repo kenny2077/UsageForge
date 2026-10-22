@@ -660,8 +660,8 @@ function build() {
   }
 }
 
-// When this tool sends next, if it will: epoch seconds or null. The CLI works it out (a set time
-// inside an open window waits for it to end), so the panel and the menu bar always agree.
+// When this tool sends next, if it will: epoch seconds or null. The CLI works it out, so the panel
+// and the menu bar always agree.
 function nextFor(tool) {
   const s = state?.tools?.[tool] || {};
   return s.installed && config[tool].mode !== "off" && s.next ? s.next : null;

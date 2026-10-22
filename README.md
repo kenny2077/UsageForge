@@ -70,6 +70,7 @@ UsageForge sends a notification only when something goes wrong (offline, signed 
 usageforge schedule 06:00            # window runs 6–11, so your 9am session gets a reset at 11
 usageforge schedule 06:00 11:00 16:00
 ```
+Each time goes out on time, even while a window is open (that message just doesn't start a new one), so a late window never pushes the rest of your day. If the Mac can't send within 15 minutes of a time (asleep, offline), that time is skipped.
 
 **2. Watch: start the next window as soon as the last one resets.**
 ```bash
@@ -100,7 +101,7 @@ There's one background check, run every 5 minutes. It re-reads the settings each
     That gives the live 5-hour and weekly percentages and the exact reset times. The panel and menu bar ask at most every 5 minutes, the background check every 15, and a ping refreshes it.
 - **When a ping fails:**
   - **Rate-limited** (5-hour or weekly cap): UsageForge waits until the reset time the server reports. For Codex it reads the weekly figure from the logs, so it doesn't send pings that can't succeed.
-  - **Anything else** (still offline after a wake-up, logged out): it retries 3 times, one minute apart, then backs off for 15 minutes.
+  - **Anything else** (still offline after a wake-up, logged out): it retries 3 times, one minute apart. A set time is then tried again at each check for up to 15 minutes after it; Back to back backs off for 15 minutes.
   - **Hung ping:** each one is killed after 2 minutes.
 - Job pings wait a random 0–2 minutes (`UF_JITTER`, in seconds) so they don't land on the same second every day.
 - Only one job run happens at a time, enforced with a lock. The log is trimmed to its last 1000 lines once it passes 2000.

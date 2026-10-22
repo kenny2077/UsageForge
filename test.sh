@@ -100,53 +100,32 @@ if [ "$past" != 23:59 ]; then
   cfg '{"claude":{"mode":"schedule","times":["'$past'"],"days":['$(( ($(date +%w) + 1) % 7 ))']},"codex":{"mode":"off"}}'
   lk tick;  check "3 5" "slot on another weekday should not fire"
   cfg '{"claude":{"mode":"schedule","times":["'$past'","'$future'"],"days":['$(date +%w)'],"prompt":"Hello forge"},"codex":{"mode":"off"}}'
-  echo $(( $(date +%s) + 600 )) >"$T/state/claude.reset"
-  lk tick;  check "3 5" "slot should wait while a window is still open"
-  echo 1 >"$T/state/claude.reset"
+  echo $(( $(date +%s) + 600 )) >"$T/state/claude.reset"   # a window is open: the set time goes out anyway
   rm -f "$T/state/claude.added"; touch "$T/state/config.json"
   lk tick;  check "3 5" "slot just added after its time should wait for tomorrow"
   printf '%s 1\n' "$past" "$future" >"$T/state/claude.added"; touch "$T/state/config.json"
-  lk tick;  check "4 5" "past slot today should fire once, even after a later save"
+  lk tick;  check "4 5" "past slot today should fire once, open window or not, even after a later save"
   [ "$(cat "$T/claude.prompt")" = "Hello forge" ] || { echo "FAIL: saved prompt not used"; exit 1; }
   lk tick;  check "4 5" "slot should not fire twice"
-  grep -q "claude: .* goes out when the open window ends" "$T/state/log" || { echo "FAIL: a slot held by an open window should say so"; exit 1; }
-  # Held by an open window: it goes out once the window ends, even past the 3 h, and the Mac wakes for it.
+  # Within 15 minutes of the set time, or not at all.
   n=$(date +%s); rm -f "$T/state/claude.last"; echo 1 >"$T/state/claude.reset"
-  far=$(date -v+12H +%H:%M 2>/dev/null || date -d '+12 hour' +%H:%M)   # the next set time is far off
-  cfg '{"claude":{"mode":"schedule","times":["'$far'"]},"codex":{"mode":"off"}}'
-  echo "$(( n - 14400 )) $(( n + 1000 ))" >"$T/state/claude.waits"
-  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson w $(( n + 1000 )) '.wake.next == $w and .tools.claude.next == $w' >/dev/null ||
-    { echo "FAIL: the Mac should wake when a held time's window ends"; exit 1; }
-  lk tick;  check "4 5" "held time should wait for its window to end"
-  # Next, as the panel and menu bar show it: a set time inside an open window waits for the window.
-  echo $(( n + 99999 )) >"$T/state/claude.reset"
-  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson r $(( n + 99999 )) '.tools.claude.next == $r' >/dev/null ||
-    { echo "FAIL: next should wait for the open window"; exit 1; }
-  echo 1 >"$T/state/claude.reset"
-  echo "$(( n - 14400 )) $(( n - 60 ))" >"$T/state/claude.waits"
-  lk tick;  check "5 5" "held time should go out once its window ends"
-  lk tick;  check "5 5" "held time should go out once"
-  # Not past its own 5 hours: a window that ends later than that skips it, and the Mac doesn't wake for it.
-  rm -f "$T/state/claude.last"
-  echo "$(( n - 14400 )) $(( n + 7200 ))" >"$T/state/claude.waits"
-  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson w $(( n + 7200 )) '.wake.next != $w' >/dev/null ||
-    { echo "FAIL: no wake for a held time past its 5 hours"; exit 1; }
-  echo "$(( n - 20000 )) $(( n - 60 ))" >"$T/state/claude.waits"
-  lk tick;  check "5 5" "held time whose window ended after its 5 hours should be skipped"
-  # Times 5 hours apart (6, 11, 16, 21): a held one that would push the next is skipped, so the next goes out on time.
   hm() { date -r $(( n + $1 )) +%H:%M 2>/dev/null || date -d "@$(( n + $1 ))" +%H:%M; }
-  five() { cfg '{"claude":{"mode":"schedule","times":["'$(hm $1)'","'$(hm $(( $1 + 18000 )))'","'$(hm $(( $1 + 36000 )))'","'$(hm $(( $1 + 54000 )))'"]},"codex":{"mode":"off"}}'; }
-  rm -f "$T/state/claude.last"; five -10860
-  echo "$(( n - 10860 )) $(( n - 60 ))" >"$T/state/claude.waits"
-  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson w $(( n - 60 )) '.tools.claude.next != $w' >/dev/null ||
-    { echo "FAIL: a held time that would push the next set time should not be next"; exit 1; }
-  lk tick;  check "5 5" "held time that would push the next set time should be skipped"
-  rm -f "$T/state/claude.waits"; five -3600; echo $(( n + 600 )) >"$T/state/claude.reset"
-  lk tick;  check "5 5" "set time inside an open window should wait"
-  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson m $(( (n + 14400) / 60 )) '(.tools.claude.next / 60 | floor) == $m' >/dev/null ||
-    { echo "FAIL: next should be the set time after the skipped one"; exit 1; }
+  cfg '{"claude":{"mode":"schedule","times":["'$(hm -1020)'"]},"codex":{"mode":"off"}}'
+  lk tick;  check "4 5" "a set time 17 min ago should not fire"
+  cfg '{"claude":{"mode":"schedule","times":["'$(hm -540)'"]},"codex":{"mode":"off"}}'
+  lk tick;  check "5 5" "a set time 9 min ago should still fire"
+  # Next, as the panel and menu bar show it: the set time, open window or not.
+  cfg '{"claude":{"mode":"schedule","times":["'$(hm 43200)'"]},"codex":{"mode":"off"}}'; echo $(( n + 99999 )) >"$T/state/claude.reset"
+  HOME="$T/home" PATH="$T/bin:$PATH" UF_STATE="$T/state" ./usageforge status --json | jq -e --argjson m $(( (n + 43200) / 60 )) '(.tools.claude.next / 60 | floor) == $m' >/dev/null ||
+    { echo "FAIL: next should be the set time even inside an open window"; exit 1; }
   echo 1 >"$T/state/claude.reset"
-  grep -q "too late to start one before" "$T/state/log" || { echo "FAIL: a skipped held time should say why"; exit 1; }
+  # A failed set time is tried again at the next check, inside its 15 minutes.
+  cp "$T/codex.calls" "$T/codex.calls.keep"; echo fail >"$T/codex.mode"; rm -f "$T/state/codex.last"
+  cfg '{"claude":{"mode":"off"},"codex":{"mode":"schedule","times":["'$(hm -300)'"]}}'
+  lk tick; grep -q "codex failed .*up to 15 min after the set time" "$T/state/log" || { echo "FAIL: a failed set time should say it tries again"; exit 1; }
+  echo ok >"$T/codex.mode"; echo 1 >"$T/state/codex.backoff"; : >"$T/codex.calls"
+  lk tick;  [ "$(calls codex)" = 1 ] || { echo "FAIL: a failed set time should be tried again at the next check"; exit 1; }
+  mv -f "$T/codex.calls.keep" "$T/codex.calls"; rm -f "$T/state/codex.backoff"
   # Codex at 0% still reports a reset time; that is no open window, so the slot fires.
   cat >"$T/bin/codex" <<EOF2
 #!/bin/sh
